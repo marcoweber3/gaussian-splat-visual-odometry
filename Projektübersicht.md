@@ -1,4 +1,4 @@
-# Pipeline zur Simulation und Evaluation visueller Lokalisierung in 3D-Gaussian-Splat-Umgebungen
+﻿# Pipeline zur Simulation und Evaluation visueller Lokalisierung in 3D-Gaussian-Splat-Umgebungen
 
 ## Projektübersicht
 
@@ -15,7 +15,9 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 ## Pipeline
 
-### 1. Zusätzliche Daten aus dem Gaussian Splat gewinnen, Koordinaten-Transformation berechnen
+### Schritt 1: Bodenebene bestimmen und Koordinatentransformation erzeugen
+
+#### 1A: Ebenen finden - Splatdatei auswählen und Boden-Ebenenkandidaten suchen
 
 - **1.1: Gaussian Splat einlesen**  
   **Output:** geladene Splat-Daten
@@ -25,37 +27,44 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 - **1.3: Ebenenkandidaten mit RANSAC bestimmen**  
   **Schritte:**  
-    1. Mit RANSAC eine Ebene aus (reduzierter) Punktwolke bestimmen -> Ebenengleichung + Inlier Indices  
-    2. Inlier der gefundenen Ebene aus der Punktwolke entfernen -> Reduzierte Punktwolke  
-    3. n-mal wiederholen, um n Ebenenkandidaten zu finden  
-    4. Ebenensuche bei Bedarf manuell nochmals mit angepasster `distance_threshold` wiederholen  
+  1. Mit RANSAC eine Ebene aus (reduzierter) Punktwolke bestimmen -> Ebenengleichung + Inlier Indices  
+  2. Inlier der gefundenen Ebene aus der Punktwolke entfernen -> Reduzierte Punktwolke  
+  3. n-mal wiederholen, um n Ebenenkandidaten zu finden  
+  4. (Ebenensuche bei Bedarf manuell nochmals mit angepasster `distance_threshold` wiederholen)  
+
   **Output:** Liste mit Ebenenkandidaten für Bodenebene, z.B. mit Boden, Wände, Decke
 
-- **(1.3-B: Ebenenkandidaten über Metriken bewerten)**  
+- **(1.3b: Ebenenkandidaten über Metriken bewerten und sortieren)**  
   **Mögliche Metriken:** Inlier-Anzahl, Flächengröße...  
   **Output:** vorsortierte Ebenenkandidaten
 
+#### 1B: Boden wählen - Ebenenkandidaten anzeigen und richtige Bodenebene auswählen
+
 - **Bodenebene interaktiv visualisieren und validieren**  
-  Ebenenkandidaten werden in einer Top-Down-View dargestellt, damit der Nutzer die tatsächliche Bodenebene und die passende Ausrichtung auswählen kann.  
-  **Herausforderung:** Boden und Decke müssen visuell unterscheidbar sein. Dafür wird eine Art Occupancy Map aus den Splat-Mittelpunkten abzüglich der Ebenen Inlier erzeugt, wobei nur ein einstellbarer Höhenbereich angezeigt wird, damit z.B. Deckenpunkte die Raumstruktur nicht verdecken.  
-  **Mögliche Funktionen:** Ebenenkandidat wechseln, Ebene um 180° flippen, Anzuzeigender Höhenbereich per Slider anpassen, (Höhenhistogramm anzeigen)  
-  **Output:** validierte Bodenebene mit passender Ausrichtung im ursprünglichen Splat-Koordinatensystem
+      Ebenenkandidaten werden in einer Top-Down-View dargestellt, damit der Nutzer die tatsächliche Bodenebene und die passende Ausrichtung auswählen kann.  
+      **Herausforderung:** Boden und Decke müssen visuell unterscheidbar sein. Dafür wird eine Art Occupancy Map aus den Splat-Mittelpunkten abzüglich der Ebenen Inlier erzeugt, wobei nur ein einstellbarer Höhenbereich angezeigt wird, damit z.B. Deckenpunkte die Raumstruktur nicht verdecken.  
+      **Mögliche Funktionen:** Ebenenkandidat wechseln, Ebene um 180° flippen, Anzuzeigender Höhenbereich per Slider anpassen, (Höhenhistogramm anzeigen)  
+      **Output:** validierte Bodenebene mit passender Ausrichtung im ursprünglichen Splat-Koordinatensystem
 
 - **Transformation für Bodenebene berechnen**  
-  Aus der validierten Bodenebene wird berechnet, wie diese auf z = 0 gelegt werden kann.  
-  **Output:** Transformation für die Bodenausrichtung
+      Aus der validierten Bodenebene wird berechnet, wie diese auf z = 0 gelegt werden kann.  
+      **Output:** Transformation für die Bodenausrichtung
+
+#### 1C: Ausrichten - Raumrotation und XY-Ursprung manuell anpassen
 
 - **Rotation um die Z-Achse manuell festlegen**  
-  Raum manuell möglichst parallel zur X- und Y-Achse ausrichten.  
-  **Output:** Korrektur für Raumorientierung
+      Raum manuell möglichst parallel zur X- und Y-Achse ausrichten.  
+      **Output:** Korrektur für Raumorientierung
 
 - **XY-Ursprung manuell setzen**  
-  Nullpunkt von X und Y manell in einer Raumecke plazieren.  
-  **Output:** Verschiebung des Koordinatenursprungs
+      Nullpunkt von X und Y manell in einer Raumecke plazieren.  
+      **Output:** Verschiebung des Koordinatenursprungs
 
 - **(Skalierung festlegen)**  
   Referenzpunkte in Occupancy-Map angeben und über Angabe der tatsächlichen Länge im Raum, Skalierungsfaktor berechnen.  
   **Output:** Skalierungsfaktor
+
+#### 1D: Transformation - Gesamttransformation prüfen und speichern
 
 - **Gesamttransformation zusammensetzen**  
   Bodenausrchtung, Rotation, Ursprung und Skalierung werden zu einer Gesamttransformation kombiniert.  
@@ -63,7 +72,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 ---
 
-### 2. Fahrweg festlegen und Bilddaten generieren
+### Schritt 2. Fahrweg festlegen und Bilddaten generieren
 
 - **Fahrweg auswählen**  
   Mögliche Varianten:
@@ -86,7 +95,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 ---
 
-### 3. Lokalisierung auswerten
+### Schritt 3. Lokalisierung auswerten
 
 - **Lokalisierungsalgorithmus auf Bildsequenz anwenden**  
   Visuelle Odometrie oder SLAM.  
