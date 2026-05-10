@@ -20,7 +20,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 - **1.1: Gaussian Splat einlesen**  
   **Output:** geladene Splat-Daten
 
-- **Mittelpunkte der Splats extrahieren**  
+- **1.2: Mittelpunkte der Splats extrahieren**  
   **Output:** 3D-Punktwolke aus Splat-Zentren
 
 - **Ebenenkandidaten mit RANSAC bestimmen**  
