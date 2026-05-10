@@ -23,10 +23,15 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 - **1.2: Mittelpunkte der Splats extrahieren**  
   **Output:** 3D-Punktwolke aus Splat-Zentren
 
-- **Ebenenkandidaten mit RANSAC bestimmen**  
+- **1.3: Ebenenkandidaten mit RANSAC bestimmen**  
+  **Schritte:**  
+    1. Mit RANSAC eine Ebene aus (reduzierter) Punktwolke bestimmen -> Ebenengleichung + Inlier Indices  
+    2. Inlier der gefundenen Ebene aus der Punktwolke entfernen -> Reduzierte Punktwolke  
+    3. n-mal wiederholen, um n Ebenenkandidaten zu finden  
+    4. Ebenensuche bei Bedarf manuell nochmals mit angepasster `distance_threshold` wiederholen  
   **Output:** Liste mit Ebenenkandidaten für Bodenebene, z.B. mit Boden, Wände, Decke
 
-- **(Ebenenkandidaten über Metriken bewerten)**  
+- **(1.3-B: Ebenenkandidaten über Metriken bewerten)**  
   **Mögliche Metriken:** Inlier-Anzahl, Flächengröße...  
   **Output:** vorsortierte Ebenenkandidaten
 
@@ -102,3 +107,9 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 - Konvertierung von gewählter Trajektorie zu Kameraposen?
 - Welche Lokalisierungsalgorithmen sollen getestet werden?
 
+
+## ToDo's
+
+
+### Optionale ToDo's
+- RANSAC Parameter über UI anpassbar machen - Verbessert Verwendbarkeit für verschiedene Splats mit unterschiedlichen Skalierungen. (Alternativ: Optimal-Parameter über Punktwolke schätzen!?)
