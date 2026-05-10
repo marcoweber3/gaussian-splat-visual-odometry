@@ -17,7 +17,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 ### 1. Zusätzliche Daten aus dem Gaussian Splat gewinnen, Koordinaten-Transformation berechnen
 
-- **Gaussian Splat einlesen**  
+- **1.1: Gaussian Splat einlesen**  
   **Output:** geladene Splat-Daten
 
 - **Mittelpunkte der Splats extrahieren**  
