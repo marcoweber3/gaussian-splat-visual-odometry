@@ -4,6 +4,7 @@ from tkinter import filedialog
 
 step1 = __import__("1a_find_plane_candidates")
 floor_view = __import__("1b_interactive_floor_validation")
+floor_alignment = __import__("1c_manual_floor_alignment")
 
 
 STEP_OPEN = "[  ]"
@@ -13,6 +14,7 @@ step1_point_cloud = None
 step1_plane_candidates = None
 step1_floor_view_cache = {}
 step1_validated_floor_data = None
+step1_alignment_data = None
 
 # select ply file
 def show_file_dialog():
@@ -159,15 +161,204 @@ def draw_floor_candidate(sender=None, app_data=None, user_data=None):
     draw_floor_preview(view_data, visible_points)
 
 
+def reset_floor_alignment_state():
+    """Reset stored 1C alignment and GUI controls"""
+
+    global step1_alignment_data
+
+    step1_alignment_data = None
+
+    if dpg.does_item_exist("alignment_yaw_slider"):
+        dpg.set_value("alignment_yaw_slider", 0.0)
+        dpg.set_value("alignment_origin_x_slider", 0.0)
+        dpg.set_value("alignment_origin_y_slider", 0.0)
+
+    if dpg.does_item_exist("1c_output_text"):
+        dpg.set_value("1c_output_text", "")
+
+    if dpg.does_item_exist("floor_alignment_preview"):
+        draw_floor_alignment()
+
+
+def get_alignment_slider_values():
+    """Read current 1C slider values"""
+
+    yaw_deg = dpg.get_value("alignment_yaw_slider")
+    origin_x = dpg.get_value("alignment_origin_x_slider")
+    origin_y = dpg.get_value("alignment_origin_y_slider")
+
+    return yaw_deg, origin_x, origin_y
+
+
+def get_alignment_visible_points():
+    """Rebuild the 1C point set from the validated 1B state"""
+
+    if step1_validated_floor_data is None:
+        return None
+
+    view_data = step1_validated_floor_data["view_data"]
+    height_filter = step1_validated_floor_data["height_filter"]
+
+    visible_points_2d, visible_heights = floor_view.filter_points_by_height(
+        view_data,
+        height_filter["min_height"],
+        height_filter["max_height"],
+    )
+
+    return visible_points_2d, visible_heights
+
+
+def draw_alignment_preview(points_2d):
+    """Draw transformed 1C points with simple x/y axes"""
+
+    width = 700
+    height = 420
+    border = 20
+
+    dpg.draw_rectangle((0, 0), (width, height), color=(80, 80, 80, 255), parent="floor_alignment_preview")
+
+    if len(points_2d) == 0:
+        dpg.draw_text((20, 20), "Keine Punkte im validierten Hoehenbereich", parent="floor_alignment_preview")
+        return
+
+    x_min = min(points_2d[:, 0].min(), 0.0)
+    x_max = max(points_2d[:, 0].max(), 0.0)
+    y_min = min(points_2d[:, 1].min(), 0.0)
+    y_max = max(points_2d[:, 1].max(), 0.0)
+
+    center_x = (x_min + x_max) / 2
+    center_y = (y_min + y_max) / 2
+
+    scale_x = (width - 2 * border) / (x_max - x_min + 0.000001)
+    scale_y = (height - 2 * border) / (y_max - y_min + 0.000001)
+    scale = min(scale_x, scale_y)
+
+    def to_screen(point):
+        x = width / 2 + (point[0] - center_x) * scale
+        y = height / 2 - (point[1] - center_y) * scale
+        return x, y
+
+    x_axis_start = to_screen([x_min, 0.0])
+    x_axis_end = to_screen([x_max, 0.0])
+    y_axis_start = to_screen([0.0, y_min])
+    y_axis_end = to_screen([0.0, y_max])
+    origin = to_screen([0.0, 0.0])
+
+    dpg.draw_line(x_axis_start, x_axis_end, color=(220, 80, 80, 180), thickness=1, parent="floor_alignment_preview")
+    dpg.draw_line(y_axis_start, y_axis_end, color=(80, 180, 90, 180), thickness=1, parent="floor_alignment_preview")
+    dpg.draw_circle(origin, 4, color=(255, 255, 255, 220), fill=(255, 255, 255, 120), parent="floor_alignment_preview")
+
+    points_2d = floor_view.sample_points_for_drawing(points_2d, 20000)
+
+    for point in points_2d:
+        x, y = to_screen(point)
+        dpg.draw_rectangle(
+            (x, y),
+            (x + 1, y + 1),
+            color=(0, 0, 0, 0),
+            fill=(190, 190, 190, 100),
+            parent="floor_alignment_preview"
+        )
+
+
+def draw_floor_alignment(sender=None, app_data=None, user_data=None):
+    """Redraw 1C alignment preview"""
+
+    if not is_latest_callback_value(sender, app_data):
+        return
+
+    dpg.delete_item("floor_alignment_preview", children_only=True)
+
+    if step1_validated_floor_data is None:
+        dpg.draw_text((20, 20), "Erst Bodenebene in 1B validieren", parent="floor_alignment_preview")
+        dpg.set_value("1c_alignment_status", "Erst Bodenebene in 1B validieren")
+        return
+
+    alignment_points = get_alignment_visible_points()
+
+    if alignment_points is None:
+        dpg.draw_text((20, 20), "Erst Bodenebene in 1B validieren", parent="floor_alignment_preview")
+        dpg.set_value("1c_alignment_status", "Erst Bodenebene in 1B validieren")
+        return
+
+    visible_points_2d, _ = alignment_points
+    yaw_deg, origin_x, origin_y = get_alignment_slider_values()
+    sim_points_2d = floor_alignment.transform_points_2d(
+        visible_points_2d,
+        yaw_deg,
+        origin_x,
+        origin_y,
+    )
+
+    draw_alignment_preview(sim_points_2d)
+
+    dpg.set_value(
+        "1c_alignment_status",
+        "Vorschau: "
+        + str(len(visible_points_2d))
+        + " Punkte aus dem validierten Hoehenbereich"
+    )
+
+
+def accept_floor_alignment():
+    """Store the selected 1C alignment for later step 1D"""
+
+    global step1_alignment_data
+
+    dpg.set_value("1c_output_text", "")
+
+    def show_status(new_text):
+        old_text = dpg.get_value("1c_output_text")
+        dpg.set_value("1c_output_text", old_text + new_text)
+        dpg.render_dearpygui_frame()
+
+    if step1_validated_floor_data is None:
+        show_status("Erst Bodenebene in 1B validieren\n")
+        draw_floor_alignment()
+        return
+
+    yaw_deg, origin_x, origin_y = get_alignment_slider_values()
+
+    T_floor_raw_to_sim = floor_alignment.build_floor_raw_to_sim_transform(
+        yaw_deg,
+        origin_x,
+        origin_y,
+    )
+    T_sim_to_floor_raw = floor_alignment.build_sim_to_floor_raw_transform(
+        yaw_deg,
+        origin_x,
+        origin_y,
+    )
+
+    step1_alignment_data = {
+        "yaw_deg": yaw_deg,
+        "origin_x": origin_x,
+        "origin_y": origin_y,
+        "T_floor_raw_to_sim": T_floor_raw_to_sim,
+        "T_sim_to_floor_raw": T_sim_to_floor_raw,
+    }
+
+    show_status("1C: Ausrichtung uebernommen\n")
+    show_status("\tRotation um Z: " + format(yaw_deg, ".2f") + " Grad\n")
+    show_status("\tUrsprung X: " + format(origin_x, ".2f") + "\n")
+    show_status("\tUrsprung Y: " + format(origin_y, ".2f") + "\n")
+    show_status("\tTransformation fuer 1D vorbereitet\n")
+
+    set_tab_done("step1_tab_1c", "1C: Ausrichten")
+
+
 def run_plane_search():
     global step1_point_cloud
     global step1_plane_candidates
     global step1_floor_view_cache
     global step1_validated_floor_data
+    global step1_alignment_data
 
     dpg.set_value("1a_output_text", "")
     dpg.set_value("1b_output_text", "")
     step1_validated_floor_data = None
+    step1_alignment_data = None
+    reset_floor_alignment_state()
 
     splat_file = dpg.get_value("splat_file_input")
 
@@ -186,6 +377,7 @@ def run_plane_search():
     step1_point_cloud, step1_plane_candidates = step1_result[1], step1_result[2]
     step1_floor_view_cache = {}
     step1_validated_floor_data = None
+    step1_alignment_data = None
 
     candidate_names = ["Kandidat " + str(i + 1) for i in range(len(step1_plane_candidates))]
 
@@ -237,6 +429,7 @@ def validate_floor_plane():
             "max_height": max_height,
         },
     }
+    reset_floor_alignment_state()
 
     show_status("1B: Bodenebene ausgewaehlt\n")
     show_status("\tKandidat: " + str(candidate_number) + "\n")
@@ -294,6 +487,18 @@ def build_step1_area():
             # section 1C
             with dpg.tab(label=STEP_OPEN + " 1C: Ausrichten", tag="step1_tab_1c"):
                 dpg.add_text("Raumrotation und XY-Ursprung manuell anpassen")
+                dpg.add_text("Richte die validierte Draufsicht an den X/Y-Achsen aus und lege den Ursprung fest.")
+                dpg.add_text("Erst Bodenebene in 1B validieren", tag="1c_alignment_status")
+
+                dpg.add_slider_float(label="Rotation um Z", tag="alignment_yaw_slider", default_value=0.0, min_value=-180.0, max_value=180.0, width=420, callback=draw_floor_alignment)
+                dpg.add_slider_float(label="Ursprung X", tag="alignment_origin_x_slider", default_value=0.0, min_value=-10.0, max_value=10.0, width=420, callback=draw_floor_alignment)
+                dpg.add_slider_float(label="Ursprung Y", tag="alignment_origin_y_slider", default_value=0.0, min_value=-10.0, max_value=10.0, width=420, callback=draw_floor_alignment)
+
+                dpg.add_drawlist(width=700, height=420, tag="floor_alignment_preview")
+
+                dpg.add_button(label="Ausrichtung uebernehmen", callback=accept_floor_alignment)
+                dpg.add_separator()
+                dpg.add_text("", tag="1c_output_text")
 
             # section 1D
             with dpg.tab(label=STEP_OPEN + " 1D: Transformation", tag="step1_tab_1d"):

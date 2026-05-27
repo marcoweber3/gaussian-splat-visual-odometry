@@ -49,13 +49,14 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 #### 1C: Ausrichten - Raumrotation und XY-Ursprung manuell anpassen
 
-- **Rotation um die Z-Achse manuell festlegen**  
-      Raum manuell möglichst parallel zur X- und Y-Achse ausrichten.  
-      **Output:** Korrektur für Raumorientierung
+- **1.5.: Rotation um die Z-Achse manuell festlegen**  
+      Die validierte Draufsicht aus dem FloorRaw-KS wird manuell so rotiert, dass der Raum möglichst parallel zur X- und Y-Achse im Sim-KS liegt. 
+      Die Rotation um den Ursprung des FloorRaw-KS, der zunächst im Mittelpunkt der validierten Bodenebene liegt.
+      **Output:** Rotationswinkel um die Z-Achse
 
-- **XY-Ursprung manuell setzen**  
-      Nullpunkt von X und Y manell in einer Raumecke plazieren.  
-      **Output:** Verschiebung des Koordinatenursprungs
+- **1.5.: XY-Ursprung manuell setzen**
+      Ursprung von X und Y wird manuell in eine sinnvolle Raumecke verschoben.  
+      **Output:** Verschiebung des Koordinatenursprungs und Transformation zwischen FloorRaw-KS und Sim-KS
 
 - **(Skalierung festlegen)**  
   Referenzpunkte in Occupancy-Map angeben und über Angabe der tatsächlichen Länge im Raum, Skalierungsfaktor berechnen.  
