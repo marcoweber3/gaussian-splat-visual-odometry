@@ -9,6 +9,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 **Abkürzungsverzeichnis:**  
 - Spat-KS: Splat-Koordinatensystem
+- FloorRaw-KS: Lokales Boden-Koordinatensystem direkt nach der Bodenvalidierung
 - Sim-KS: Simulations-Koordinatensystem
 
 ---
@@ -34,21 +35,17 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
   **Output:** Liste mit Ebenenkandidaten für Bodenebene, z.B. mit Boden, Wände, Decke
 
-- **(1.3b: Ebenenkandidaten über Metriken bewerten und sortieren)**  
-  **Mögliche Metriken:** Inlier-Anzahl, Flächengröße...  
-  **Output:** vorsortierte Ebenenkandidaten
-
 #### 1B: Boden wählen - Ebenenkandidaten anzeigen und richtige Bodenebene auswählen
 
-- **Bodenebene interaktiv visualisieren und validieren**  
+- **1.4.: Bodenebene interaktiv visualisieren und validieren**  
       Ebenenkandidaten werden in einer Top-Down-View dargestellt, damit der Nutzer die tatsächliche Bodenebene und die passende Ausrichtung auswählen kann.  
       **Herausforderung:** Boden und Decke müssen visuell unterscheidbar sein. Dafür wird eine Art Occupancy Map aus den Splat-Mittelpunkten abzüglich der Ebenen Inlier erzeugt, wobei nur ein einstellbarer Höhenbereich angezeigt wird, damit z.B. Deckenpunkte die Raumstruktur nicht verdecken.  
-      **Mögliche Funktionen:** Ebenenkandidat wechseln, Ebene um 180° flippen, Anzuzeigender Höhenbereich per Slider anpassen, (Höhenhistogramm anzeigen)  
-      **Output:** validierte Bodenebene mit passender Ausrichtung im ursprünglichen Splat-Koordinatensystem
+      **Mögliche Funktionen:** Ebenenkandidat wechseln, Ebene um 180° flippen, Anzuzeigender Höhenbereich per Slider anpassen 
+      **Output:** validierte Bodenebene mit passender Ausrichtung im ursprünglichen Splat-Koordinatensystem, gewählter Höhenfilter
 
-- **Transformation für Bodenebene berechnen**  
-      Aus der validierten Bodenebene wird berechnet, wie diese auf z = 0 gelegt werden kann.  
-      **Output:** Transformation für die Bodenausrichtung
+- **1.4.: Lokales Boden-Koordinatensystem vorbereiten**  
+      Aus der validierten Bodenebene wird ein FloorRaw-KS erzeugt. Darin liegt die Bodenebene auf z = 0, Punkte oberhalb der Ebene haben positive z-Werte und x/y bilden die Top-Down-Ansicht.  
+      **Output:** normalisierte Bodenebene, Ebenenmittelpunkt, Basisvektoren und Transformation zwischen Splat-KS und FloorRaw-KS
 
 #### 1C: Ausrichten - Raumrotation und XY-Ursprung manuell anpassen
 
@@ -77,7 +74,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 - **Fahrweg auswählen**  
   Mögliche Varianten:
   - Trajektorie in Top-Down-View einzeichnen
-  - manuelle Steuerung mit W, A, S, D 
+  - manuelle Steuerung mit W, A, S, D  
   (**Herausforderung:** "Glätten" der Trajektorie zur Simulation einer Fahrphysik)  
   **Output:** Geplante oder aufgezeichnete Fahrtrajektorie im 
 

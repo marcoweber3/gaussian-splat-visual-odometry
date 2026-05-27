@@ -10,7 +10,7 @@ from plyfile import PlyData
 
 SPLAT_FILE = r"C:\Temp\PLY\point_cloud_2.ply"
 
-RANSAC_DISTANCE_THRESHOLD = 0.02 # max distance from plane to include a point as an inlier
+RANSAC_DISTANCE_THRESHOLD = 0.05 # max distance from plane to include a point as an inlier
 RANSAC_N = 3 # number of initial points to test for (3 for a plane)
 RANSAC_NUM_ITERATIONS = 1000 # iterations to test different planes
 NUMBER_OF_PLANES = 5 # how many plane candidates should be found
@@ -49,6 +49,7 @@ def find_plane_candidates(point_cloud, number_of_planes, distance_threshold, ran
 
     plane_candidates = []
     remaining_points = open3d_point_cloud
+    remaining_indices = np.arange(len(point_cloud))
 
     for _ in range(number_of_planes):
 
@@ -56,9 +57,11 @@ def find_plane_candidates(point_cloud, number_of_planes, distance_threshold, ran
         plane_model, inlier_points = remaining_points.segment_plane(distance_threshold, ransac_n, num_iterations)
         # return values: plane model (a, b, c, d) for plane equation ax + by + cz + d = 0, indices of inlier points to the plane
 
-        plane_candidates.append((plane_model, inlier_points))
+        original_inlier_points = remaining_indices[inlier_points]
+        plane_candidates.append((plane_model, original_inlier_points))
 
         remaining_points = remaining_points.select_by_index(inlier_points, invert=True) # remove inlier points from point cloud to get next plane candidates
+        remaining_indices = np.delete(remaining_indices, inlier_points)
 
     return plane_candidates
 
@@ -99,7 +102,6 @@ def run_step_1a(splat_file, status_callback):
         status_callback("\t\t\tAnzahl Inlier: " + str(len(inlier_points)) + "\n")
 
     return splat_data, point_cloud, plane_candidates
-
 
 
 def main():
