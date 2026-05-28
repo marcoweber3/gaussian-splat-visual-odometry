@@ -1,3 +1,4 @@
+import os
 import dearpygui.dearpygui as dpg
 from tkinter import Tk
 from tkinter import filedialog
@@ -5,6 +6,7 @@ from tkinter import filedialog
 step1 = __import__("1a_find_plane_candidates")
 floor_view = __import__("1b_interactive_floor_validation")
 floor_alignment = __import__("1c_manual_floor_alignment")
+final_transform = __import__("1d_build_transform")
 
 
 STEP_OPEN = "[  ]"
@@ -15,6 +17,7 @@ step1_plane_candidates = None
 step1_floor_view_cache = {}
 step1_validated_floor_data = None
 step1_alignment_data = None
+step1_final_transform_data = None
 
 # select ply file
 def show_file_dialog():
@@ -106,7 +109,7 @@ def draw_floor_preview(view_data, visible_points):
         parent="floor_candidate_preview"
     )
 
-    visible_points = floor_view.sample_points_for_drawing(visible_points, 20000)
+    visible_points = floor_view.sample_points_for_drawing(visible_points, 10000)
 
     for point in visible_points:
         x, y = to_screen(point)
@@ -165,8 +168,10 @@ def reset_floor_alignment_state():
     """Reset stored 1C alignment and GUI controls"""
 
     global step1_alignment_data
+    global step1_final_transform_data
 
     step1_alignment_data = None
+    step1_final_transform_data = None
 
     if dpg.does_item_exist("alignment_yaw_slider"):
         dpg.set_value("alignment_yaw_slider", 0.0)
@@ -176,8 +181,22 @@ def reset_floor_alignment_state():
     if dpg.does_item_exist("1c_output_text"):
         dpg.set_value("1c_output_text", "")
 
+    if dpg.does_item_exist("1d_output_text"):
+        dpg.set_value("1d_output_text", "")
+
     if dpg.does_item_exist("floor_alignment_preview"):
         draw_floor_alignment()
+
+
+def reset_final_transform_state():
+    """Reset stored 1D transformation"""
+
+    global step1_final_transform_data
+
+    step1_final_transform_data = None
+
+    if dpg.does_item_exist("1d_output_text"):
+        dpg.set_value("1d_output_text", "")
 
 
 def get_alignment_slider_values():
@@ -248,7 +267,7 @@ def draw_alignment_preview(points_2d):
     dpg.draw_line(y_axis_start, y_axis_end, color=(80, 180, 90, 180), thickness=1, parent="floor_alignment_preview")
     dpg.draw_circle(origin, 4, color=(255, 255, 255, 220), fill=(255, 255, 255, 120), parent="floor_alignment_preview")
 
-    points_2d = floor_view.sample_points_for_drawing(points_2d, 20000)
+    points_2d = floor_view.sample_points_for_drawing(points_2d, 10000)
 
     for point in points_2d:
         x, y = to_screen(point)
@@ -337,6 +356,7 @@ def accept_floor_alignment():
         "T_floor_raw_to_sim": T_floor_raw_to_sim,
         "T_sim_to_floor_raw": T_sim_to_floor_raw,
     }
+    reset_final_transform_state()
 
     show_status("1C: Ausrichtung uebernommen\n")
     show_status("\tRotation um Z: " + format(yaw_deg, ".2f") + " Grad\n")
@@ -347,17 +367,137 @@ def accept_floor_alignment():
     set_tab_done("step1_tab_1c", "1C: Ausrichten")
 
 
+def calculate_final_transform():
+    """Calculate and show the final step 1 transform"""
+
+    global step1_final_transform_data
+
+    dpg.set_value("1d_output_text", "")
+
+    def show_status(new_text):
+        old_text = dpg.get_value("1d_output_text")
+        dpg.set_value("1d_output_text", old_text + new_text)
+        dpg.render_dearpygui_frame()
+
+    if step1_validated_floor_data is None:
+        show_status("Erst Bodenebene in 1B validieren\n")
+        return
+
+    if step1_alignment_data is None:
+        show_status("Erst Ausrichtung in 1C übernehmen\n")
+        return
+
+    step1_final_transform_data = final_transform.build_final_transform(
+        step1_validated_floor_data,
+        step1_alignment_data,
+    )
+
+    splat_file = dpg.get_value("splat_file_input")
+    splat_file_path = os.path.abspath(splat_file)
+    splat_file_name = os.path.basename(splat_file)
+    splat_name = os.path.splitext(splat_file_name)[0]
+    output_dir = os.path.join("splats", splat_name)
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    transform_yaml_path = os.path.join(output_dir, "transform.yaml")
+    grid_file_path = os.path.join(output_dir, "top_down_grid.npz")
+
+    T_splat_to_sim = step1_final_transform_data["T_splat_to_sim"]
+    T_sim_to_splat = step1_final_transform_data["T_sim_to_splat"]
+
+    height_filter = step1_validated_floor_data["height_filter"]
+    min_height = height_filter["min_height"]
+    max_height = height_filter["max_height"]
+    cell_size = 0.05
+
+    points_sim = final_transform.transform_points(step1_point_cloud, T_splat_to_sim)
+    occupancy_grid, origin_xy, height_range, visible_point_count = final_transform.build_top_down_grid(
+        points_sim,
+        min_height,
+        max_height,
+        cell_size,
+    )
+
+    final_transform.write_transform_yaml(
+        transform_yaml_path,
+        splat_file_name,
+        splat_file_path,
+        T_splat_to_sim,
+        T_sim_to_splat,
+    )
+    final_transform.write_top_down_grid(
+        grid_file_path,
+        occupancy_grid,
+        cell_size,
+        origin_xy,
+        height_range,
+        T_splat_to_sim,
+        T_sim_to_splat,
+    )
+
+    step1_final_transform_data["output_dir"] = output_dir
+    step1_final_transform_data["transform_yaml"] = transform_yaml_path
+    step1_final_transform_data["top_down_grid"] = grid_file_path
+
+    show_status("1D: Gesamttransformation berechnet\n")
+    show_status("\tKandidat: " + str(step1_validated_floor_data["candidate_number"]) + "\n")
+    show_status("\tRotation um Z: " + format(step1_alignment_data["yaw_deg"], ".2f") + " deg\n")
+    show_status("\tUrsprung X: " + format(step1_alignment_data["origin_x"], ".2f") + "\n")
+    show_status("\tUrsprung Y: " + format(step1_alignment_data["origin_y"], ".2f") + "\n\n")
+
+    if visible_point_count == 0:
+        show_status("Keine Punkte im gewaehlten Hoehenbereich gefunden\n\n")
+
+    show_status("Gespeichert in:\n")
+    show_status(output_dir + "\n\n")
+    show_status("Dateien:\n")
+    show_status("transform.yaml\n")
+    show_status("top_down_grid.npz\n\n")
+
+    show_status("T_splat_to_sim:\n")
+    show_status(final_transform.format_matrix(T_splat_to_sim))
+    show_status("\n\nT_sim_to_splat:\n")
+    show_status(final_transform.format_matrix(T_sim_to_splat))
+    show_status("\n")
+
+    set_tab_done("step1_tab_1d", "1D: Transformation")
+
+
+def show_saved_top_down_grid():
+    """Open the saved top-down grid in Matplotlib"""
+
+    dpg.set_value("1d_output_text", "")
+
+    def show_status(new_text):
+        old_text = dpg.get_value("1d_output_text")
+        dpg.set_value("1d_output_text", old_text + new_text)
+        dpg.render_dearpygui_frame()
+
+    if step1_final_transform_data is None:
+        show_status("Erst Transformation und Grid berechnen\n")
+        return
+
+    if "top_down_grid" not in step1_final_transform_data:
+        show_status("Erst Transformation und Grid berechnen\n")
+        return
+
+    final_transform.show_top_down_grid(step1_final_transform_data["top_down_grid"])
+
+
 def run_plane_search():
     global step1_point_cloud
     global step1_plane_candidates
     global step1_floor_view_cache
     global step1_validated_floor_data
     global step1_alignment_data
+    global step1_final_transform_data
 
     dpg.set_value("1a_output_text", "")
     dpg.set_value("1b_output_text", "")
     step1_validated_floor_data = None
     step1_alignment_data = None
+    step1_final_transform_data = None
     reset_floor_alignment_state()
 
     splat_file = dpg.get_value("splat_file_input")
@@ -378,6 +518,7 @@ def run_plane_search():
     step1_floor_view_cache = {}
     step1_validated_floor_data = None
     step1_alignment_data = None
+    step1_final_transform_data = None
 
     candidate_names = ["Kandidat " + str(i + 1) for i in range(len(step1_plane_candidates))]
 
@@ -503,6 +644,11 @@ def build_step1_area():
             # section 1D
             with dpg.tab(label=STEP_OPEN + " 1D: Transformation", tag="step1_tab_1d"):
                 dpg.add_text("Gesamttransformation pruefen und speichern")
+                dpg.add_text("Berechnet die Gesamttransformation aus validierter Bodenebene und manueller Ausrichtung.")
+                dpg.add_button(label="Transformation berechnen", callback=calculate_final_transform)
+                dpg.add_button(label="Top-Down Grid anzeigen", callback=show_saved_top_down_grid)
+                dpg.add_separator()
+                dpg.add_text("", tag="1d_output_text")
 
 
 def build_step2_area():

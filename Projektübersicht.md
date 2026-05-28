@@ -64,9 +64,13 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 #### 1D: Transformation - Gesamttransformation prüfen und speichern
 
-- **Gesamttransformation zusammensetzen**  
-  Bodenausrchtung, Rotation, Ursprung und Skalierung werden zu einer Gesamttransformation kombiniert.  
-  **Output:** Gesamttransformation und inverse Transformation zwischen Splat-KS und Sim-KS
+- **1.6.: Gesamttransformation zusammensetzen**  
+  Bodenausrichtung, Rotation und XY-Ursprung werden zu einer Gesamttransformation kombiniert. Zusätzlich wird die inverse Transformation berechnet.  
+  **Output:** `transform.yaml` mit Gesamttransformation und inverser Transformation zwischen Splat-KS und Sim-KS
+
+- **1.6.: Top-Down-Grid aus Sim-Koordinaten erzeugen**  
+  Die Splat-Mittelpunkte werden mit der Gesamttransformation ins Sim-KS transformiert und innerhalb des gewählten Höhenbereichs als Occupancy Grid gespeichert.  
+  **Output:** `top_down_grid.npz` mit Occupancy Grid, Zellgröße, Ursprung, Höhenbereich und Transformationsmatrizen
 
 ---
 
