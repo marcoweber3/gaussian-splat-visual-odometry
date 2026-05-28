@@ -20,6 +20,42 @@ def build_final_transform(validated_floor_data, alignment_data):
     }
 
 
+def matrix_to_euler_xyz_deg(rotation_matrix):
+    """Convert rotation matrix to x/y/z angles in degrees for SuperSplat"""
+
+    r = rotation_matrix
+
+    # This value is near zero if the y-rotation is close to 90 degrees.
+    # In that case x and z rotation cannot be separated clearly.
+    sy = np.sqrt(r[0, 0] ** 2 + r[1, 0] ** 2)
+
+    if sy > 0.000001:
+        # normal case
+        rotation_x = np.arctan2(r[2, 1], r[2, 2])
+        rotation_y = np.arctan2(-r[2, 0], sy)
+        rotation_z = np.arctan2(r[1, 0], r[0, 0])
+    else:
+        # fallback for nearly vertical rotation
+        rotation_x = np.arctan2(-r[1, 2], r[1, 1])
+        rotation_y = np.arctan2(-r[2, 0], sy)
+        rotation_z = 0.0
+
+    return np.degrees([rotation_x, rotation_y, rotation_z])
+
+
+def build_sim_to_supersplat_transform():
+    """Build transform from our z-up sim system to SuperSplat y-up system."""
+
+    # SuperSplat uses y as up axis
+    # Our sim system uses z as up axis
+    return np.array([
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ])
+
+
 def transform_points(points, transform_matrix):
     """Apply a 4x4 transform to 3D points"""
 
@@ -78,12 +114,30 @@ def build_top_down_grid(points_sim, min_height, max_height, cell_size):
     return occupancy_grid, origin_xy, height_range, len(visible_points)
 
 
-def write_transform_yaml(file_path, splat_file_name, splat_file_path, T_splat_to_sim, T_sim_to_splat):
+def write_transform_yaml(
+    file_path,
+    splat_file_name,
+    splat_file_path,
+    T_splat_to_sim,
+    T_sim_to_splat,
+    T_splat_to_supersplat,
+    supersplat_position,
+    supersplat_rotation_deg,
+):
     """Write the transformation matrices as simple YAML text"""
 
     lines = []
     lines.append("splat_file: " + format_string_for_yaml(splat_file_name))
     lines.append("original_splat_file_path: " + format_string_for_yaml(splat_file_path))
+    lines.append("")
+    lines.append("T_splat_to_supersplat:")
+    lines.extend(format_matrix_for_yaml(T_splat_to_supersplat))
+    lines.append("")
+    lines.append("supersplat_transform:")
+    lines.append("  coordinate_system_note: " + format_string_for_yaml("SuperSplat uses y-up, sim uses z-up"))
+    lines.append("  position_xyz: " + format_vector_for_yaml(supersplat_position))
+    lines.append("  rotation_xyz_deg: " + format_vector_for_yaml(supersplat_rotation_deg))
+    lines.append("  scale: 1.000000")
     lines.append("")
     lines.append("T_splat_to_sim:")
     lines.extend(format_matrix_for_yaml(T_splat_to_sim))
@@ -115,6 +169,17 @@ def format_matrix_for_yaml(matrix):
         lines.append("  - [" + ", ".join(formatted_values) + "]")
 
     return lines
+
+
+def format_vector_for_yaml(values):
+    """Format a short vector for YAML"""
+
+    formatted_values = []
+
+    for value in values:
+        formatted_values.append(format(value, ".6f"))
+
+    return "[" + ", ".join(formatted_values) + "]"
 
 
 def write_top_down_grid(file_path, occupancy_grid, cell_size, origin_xy, height_range, T_splat_to_sim, T_sim_to_splat):

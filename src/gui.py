@@ -410,6 +410,12 @@ def calculate_final_transform():
     T_splat_to_sim = step1_final_transform_data["T_splat_to_sim"]
     T_sim_to_splat = step1_final_transform_data["T_sim_to_splat"]
 
+    # get transform values for supersplat
+    T_sim_to_supersplat = final_transform.build_sim_to_supersplat_transform()
+    T_splat_to_supersplat = T_sim_to_supersplat @ T_splat_to_sim
+    supersplat_position = T_splat_to_supersplat[:3, 3]
+    supersplat_rotation_deg = final_transform.matrix_to_euler_xyz_deg(T_splat_to_supersplat[:3, :3])
+
     height_filter = step1_validated_floor_data["height_filter"]
     min_height = height_filter["min_height"]
     max_height = height_filter["max_height"]
@@ -429,6 +435,9 @@ def calculate_final_transform():
         splat_file_path,
         T_splat_to_sim,
         T_sim_to_splat,
+        T_splat_to_supersplat,
+        supersplat_position,
+        supersplat_rotation_deg,
     )
     final_transform.write_top_down_grid(
         grid_file_path,
@@ -443,6 +452,9 @@ def calculate_final_transform():
     step1_final_transform_data["output_dir"] = output_dir
     step1_final_transform_data["transform_yaml"] = transform_yaml_path
     step1_final_transform_data["top_down_grid"] = grid_file_path
+    step1_final_transform_data["T_splat_to_supersplat"] = T_splat_to_supersplat
+    step1_final_transform_data["supersplat_position"] = supersplat_position
+    step1_final_transform_data["supersplat_rotation_deg"] = supersplat_rotation_deg
 
     show_status("1D: Gesamttransformation berechnet\n")
     show_status("\tKandidat: " + str(step1_validated_floor_data["candidate_number"]) + "\n")
@@ -458,6 +470,26 @@ def calculate_final_transform():
     show_status("Dateien:\n")
     show_status("transform.yaml\n")
     show_status("top_down_grid.npz\n\n")
+
+    show_status("SuperSplat Transformationswerte (Y-up):\n")
+    show_status("Hinweis: Unser Sim-KS nutzt Z als Hoehe. SuperSplat nutzt Y als Hoehe.\n")
+    show_status("Daher wurden die Achsen fuer diese Werte umgerechnet.\n\n")
+    show_status("Position:\n")
+    show_status(
+        "X: " + format(supersplat_position[0], ".4f")
+        + "\tY: " + format(supersplat_position[1], ".4f")
+        + "\tZ: " + format(supersplat_position[2], ".4f")
+        + "\n\n"
+    )
+    show_status("Rotation:\n")
+    show_status(
+        "X: " + format(supersplat_rotation_deg[0], ".2f") + " deg"
+        + "\tY: " + format(supersplat_rotation_deg[1], ".2f") + " deg"
+        + "\tZ: " + format(supersplat_rotation_deg[2], ".2f") + " deg"
+        + "\n\n"
+    )
+    show_status("Skalierung: 1\n\n")
+    show_status("Kontrolle in SuperSplat: Nach Eingabe dieser Werte sollte die Bodenebene horizontal auf dem Grid liegen.\n\n")
 
     show_status("T_splat_to_sim:\n")
     show_status(final_transform.format_matrix(T_splat_to_sim))
@@ -878,7 +910,7 @@ def build_step1_area():
 
                 dpg.add_button(label="Ebenenkandidaten suchen", callback=run_plane_search)
                 dpg.add_separator()
-                dpg.add_text("", tag="1a_output_text")
+                dpg.add_input_text(tag="1a_output_text", default_value="", multiline=True, readonly=True, width=970, height=120)
 
             # section 1B
             with dpg.tab(label=STEP_OPEN + " 1B: Boden waehlen", tag="step1_tab_1b"):
@@ -897,7 +929,7 @@ def build_step1_area():
 
                 dpg.add_button(label="Bodenebene validieren", callback=validate_floor_plane)
                 dpg.add_separator()
-                dpg.add_text("", tag="1b_output_text")
+                dpg.add_input_text(tag="1b_output_text", default_value="", multiline=True, readonly=True, width=970, height=120)
 
             # section 1C
             with dpg.tab(label=STEP_OPEN + " 1C: Ausrichten", tag="step1_tab_1c"):
@@ -913,7 +945,7 @@ def build_step1_area():
 
                 dpg.add_button(label="Ausrichtung uebernehmen", callback=accept_floor_alignment)
                 dpg.add_separator()
-                dpg.add_text("", tag="1c_output_text")
+                dpg.add_input_text(tag="1c_output_text", default_value="", multiline=True, readonly=True, width=970, height=120)
 
             # section 1D
             with dpg.tab(label=STEP_OPEN + " 1D: Transformation", tag="step1_tab_1d"):
@@ -922,7 +954,7 @@ def build_step1_area():
                 dpg.add_button(label="Transformation berechnen", callback=calculate_final_transform)
                 dpg.add_button(label="Top-Down Grid anzeigen", callback=show_saved_top_down_grid)
                 dpg.add_separator()
-                dpg.add_text("", tag="1d_output_text")
+                dpg.add_input_text(tag="1d_output_text", default_value="", multiline=True, readonly=True, width=970, height=260)
 
 
 def build_step2_area():
@@ -948,14 +980,7 @@ def build_step2_area():
 
                 dpg.add_button(label="Trajektorie einzeichnen", callback=start_trajectory_drawing)
                 dpg.add_separator()
-                dpg.add_input_text(
-                    tag="2a_output_text",
-                    default_value="",
-                    multiline=True,
-                    readonly=True,
-                    width=970,
-                    height=100,
-                )
+                dpg.add_input_text(tag="2a_output_text", default_value="", multiline=True, readonly=True, width=970, height=100)
 
             # section 2B
             with dpg.tab(label="2B: Kameraposen", tag="step2_tab_2b"):
@@ -964,14 +989,7 @@ def build_step2_area():
                 dpg.add_input_float(tag="camera_height_input", default_value=0.4, width=160)
                 dpg.add_button(label="Kameraposen generieren", callback=generate_camera_poses)
                 dpg.add_separator()
-                dpg.add_input_text(
-                    tag="2b_output_text",
-                    default_value="",
-                    multiline=True,
-                    readonly=True,
-                    width=970,
-                    height=140,
-                )
+                dpg.add_input_text(tag="2b_output_text", default_value="", multiline=True, readonly=True, width=970, height=140)
 
 
 def build_step3_area():
