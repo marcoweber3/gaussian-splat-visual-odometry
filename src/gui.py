@@ -9,6 +9,7 @@ floor_view = __import__("1b_interactive_floor_validation")
 floor_alignment = __import__("1c_manual_floor_alignment")
 final_transform = __import__("1d_build_transform")
 camera_pose_generator = __import__("2b_generate_camera_poses")
+supersplat_export = __import__("2c_export_supersplat")
 
 
 STEP_OPEN = "[  ]"
@@ -22,6 +23,7 @@ step1_alignment_data = None
 step1_final_transform_data = None
 step2_splat_output_dir = None
 step2_camera_poses = None
+step2_images_txt_path = None
 
 # select ply file
 def show_file_dialog():
@@ -569,11 +571,11 @@ def load_top_down_grid(grid_file_path):
 
     # npz file from step 1D
     data = np.load(grid_file_path)
-    occupancy_grid = data["occupancy_grid"]
+    occupancy_grid = data["occupancy_grid"].copy()
 
     # size per grid cell in Sim coordinates
     cell_size = float(data["cell_size"])
-    origin_xy = data["origin_xy"]
+    origin_xy = data["origin_xy"].copy()
 
     data.close()
 
@@ -593,6 +595,8 @@ def save_trajectory_csv(file_path, points_xy):
 def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
     """Draw waypoints on top-down grid"""
 
+    import matplotlib
+    matplotlib.use("TkAgg", force=True)
     import matplotlib.pyplot as plt
 
     # load map and scale values from the selected splat folder
@@ -742,7 +746,7 @@ def generate_camera_poses():
         return
 
     trajectory_file_path = os.path.join(step2_splat_output_dir, "trajectory.csv")
-    camera_poses_file_path = os.path.join(step2_splat_output_dir, "camera_poses_neutral_format.csv")
+    camera_poses_file_path = os.path.join(step2_splat_output_dir, "camera_poses_sim.csv")
 
     if not os.path.isfile(trajectory_file_path):
         set_step2b_status("trajectory.csv nicht gefunden")
@@ -789,6 +793,108 @@ def generate_camera_poses():
         + str(camera_pose_generator.LOOKAHEAD_STEPS)
     )
     set_tab_done("step2_tab_2b", "2B: Bilddaten")
+
+
+def set_step2c_status(text):
+    dpg.set_value("2c_output_text", text)
+    dpg.render_dearpygui_frame()
+
+
+def export_supersplat_images_txt():
+    """Export camera poses as images.txt for SuperSplat"""
+
+    global step2_images_txt_path
+
+    step2_images_txt_path = None
+
+    if step2_splat_output_dir is None:
+        set_step2c_status("Erst Splat-Ausgabeordner unter 2A auswaehlen")
+        return
+
+    selected_folder = step2_splat_output_dir
+
+    camera_poses_file_path = os.path.join(selected_folder, "camera_poses_sim.csv")
+    transform_yaml_path = os.path.join(selected_folder, "transform.yaml")
+
+    if not os.path.isfile(camera_poses_file_path):
+        set_step2c_status("camera_poses_sim.csv nicht gefunden")
+        return
+
+    if not os.path.isfile(transform_yaml_path):
+        set_step2c_status("transform.yaml nicht gefunden")
+        return
+
+    camera_poses = supersplat_export.load_camera_poses_csv(camera_poses_file_path)
+
+    if len(camera_poses) == 0:
+        set_step2c_status("Keine Kameraposen gefunden")
+        return
+
+    # fixed output folder for SuperSplat poses
+    output_folder = os.path.join(selected_folder, "supersplat_camera_poses")
+    os.makedirs(output_folder, exist_ok=True)
+
+    images_txt_path = os.path.join(output_folder, "images.txt")
+
+    # folder for the rendered SuperSplat video
+    video_folder = os.path.join(selected_folder, "supersplat_video")
+    os.makedirs(video_folder, exist_ok=True)
+
+    # write images.txt
+    supersplat_export.write_images_txt(camera_poses, images_txt_path)
+
+    # read transform values for instructions
+    supersplat_position, supersplat_rotation_deg = supersplat_export.load_supersplat_values_from_transform_yaml(transform_yaml_path)
+
+    step2_images_txt_path = images_txt_path
+
+    position_text = "Transformationswerte bitte aus transform.yaml uebernehmen:\n" + transform_yaml_path + "\n\n"
+    rotation_text = ""
+
+    if supersplat_position is not None and supersplat_rotation_deg is not None:
+        position_text = (
+            "Position:\n"
+            + "X: " + format(supersplat_position[0], ".4f")
+            + "\tY: " + format(supersplat_position[1], ".4f")
+            + "\tZ: " + format(supersplat_position[2], ".4f")
+            + "\n\n"
+        )
+        rotation_text = (
+            "Rotation:\n"
+            + "X: " + format(supersplat_rotation_deg[0], ".2f") + " deg"
+            + "\tY: " + format(supersplat_rotation_deg[1], ".2f") + " deg"
+            + "\tZ: " + format(supersplat_rotation_deg[2], ".2f") + " deg"
+            + "\n\n"
+        )
+
+    set_step2c_status(
+        "images.txt erzeugt:\n\n"
+        + images_txt_path
+        + "\n\n"
+        + "\n\n"
+        + "Naechste Schritte in SuperSplat:\n\n"
+        + "1. SuperSplat Editor oeffnen:\n"
+        + "   https://superspl.at/editor\n\n"
+        + "2. Originale Splat-Datei durch Drag & Drop laden.\n\n"
+        + "3. Im Bereich Transformation diese Werte eintragen:\n\n"
+        + position_text
+        + rotation_text
+        + "Skalierung: 1\n\n"
+        + "4. Über 'Datei' -> 'Importieren...' die Kameraposen durch folgende Datei importieren:\n\n"
+        + images_txt_path
+        + "\n\n"
+        + "Dadurch werden die Kameraposen als Frames in die Zeitleiste eingefuegt (ggf. Zeitleiste ganz unten links durch Klick auf 'ZEITLEISTE' aufklappen).\n\n"
+        + "5. Gesamtzahl der Frames unten rechts erhöhen auf:"
+        + str(len(camera_poses))
+        + "\n\n"
+        + "Eine Preview kann durch klick auf den Play-Button in der Zeitleiste gestartet werden.\n\n"
+        + "6. Video rendern ueber 'Rendern' -> 'Video...'.\n\n"
+        + "7. Das Video in den erzeugten Video-Ordner exportieren:\n\n"
+        + video_folder
+        + "\n\n"
+        + "Danach mit Schritt 3A fortfahren."
+    )
+    set_tab_done("step2_tab_2c", "2C: SuperSplat Export")
 
 
 def run_plane_search():
@@ -990,6 +1096,16 @@ def build_step2_area():
                 dpg.add_button(label="Kameraposen generieren", callback=generate_camera_poses)
                 dpg.add_separator()
                 dpg.add_input_text(tag="2b_output_text", default_value="", multiline=True, readonly=True, width=970, height=140)
+
+            # section 2C
+            with dpg.tab(label="2C: SuperSplat Export", tag="step2_tab_2c"):
+                dpg.add_text("SuperSplat images.txt Export")
+                dpg.add_text("Erzeugt eine images.txt aus den Kameraposen.")
+                dpg.add_text("Diese Datei kann danach in SuperSplat importiert werden.")
+
+                dpg.add_button(label="images.txt erzeugen", callback=export_supersplat_images_txt)
+                dpg.add_separator()
+                dpg.add_input_text(tag="2c_output_text", default_value="", multiline=True, readonly=True, width=970, height=300)
 
 
 def build_step3_area():

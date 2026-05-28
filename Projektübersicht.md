@@ -80,15 +80,11 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 - **2.2: Kamerapositionen entlang der Trajektorie bestimmen**  
   **Parameter:** z-Höhe, Spacing, Lookahead um Kameraausrichtung zu glätten
-  **Output:** `camera_poses_neutral_format.csv` Kameraposen im Format x,y,z,yaw_deg im Sim-KS
+  **Output:** `camera_poses_sim.csv` Kameraposen im Format x,y,z,yaw_deg im Sim-KS
 
-- **Kameraposen für das Rendering transformieren**  
-  Die Kameraposen werden passend zum ursprünglichen Gaussian Splat transformiert.  
-  **Output:** Koordinaten der Kameraposen im ursprünglichen Splat-KS
-
-- **Simulierte Kamerabilder im Gaussian Splat erzeugen**  
-  Bilder aus sicht des Roboters entlang der Trajektorie.  
-  **Output:** Bildsequenz für den Lokalisierungsalgorithmus
+- **2.3: SuperSplat-Export vorbereiten**  
+  Aus `camera_poses_sim.csv` wird eine COLMAP-`images.txt` für den Import in SuperSplat erzeugt.  
+  **Output:** `supersplat_camera_poses/images.txt` und Ordner `supersplat_video/` zum ablegen der gerenderten Videodatei.
 
 ---
 
