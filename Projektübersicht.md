@@ -37,24 +37,24 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 #### 1B: Boden wählen - Ebenenkandidaten anzeigen und richtige Bodenebene auswählen
 
-- **1.4.: Bodenebene interaktiv visualisieren und validieren**  
+- **1.4: Bodenebene interaktiv visualisieren und validieren**  
       Ebenenkandidaten werden in einer Top-Down-View dargestellt, damit der Nutzer die tatsächliche Bodenebene und die passende Ausrichtung auswählen kann.  
       **Herausforderung:** Boden und Decke müssen visuell unterscheidbar sein. Dafür wird eine Art Occupancy Map aus den Splat-Mittelpunkten abzüglich der Ebenen Inlier erzeugt, wobei nur ein einstellbarer Höhenbereich angezeigt wird, damit z.B. Deckenpunkte die Raumstruktur nicht verdecken.  
       **Mögliche Funktionen:** Ebenenkandidat wechseln, Ebene um 180° flippen, Anzuzeigender Höhenbereich per Slider anpassen 
       **Output:** validierte Bodenebene mit passender Ausrichtung im ursprünglichen Splat-Koordinatensystem, gewählter Höhenfilter
 
-- **1.4.: Lokales Boden-Koordinatensystem vorbereiten**  
+- **1.4: Lokales Boden-Koordinatensystem vorbereiten**  
       Aus der validierten Bodenebene wird ein FloorRaw-KS erzeugt. Darin liegt die Bodenebene auf z = 0, Punkte oberhalb der Ebene haben positive z-Werte und x/y bilden die Top-Down-Ansicht.  
       **Output:** normalisierte Bodenebene, Ebenenmittelpunkt, Basisvektoren und Transformation zwischen Splat-KS und FloorRaw-KS
 
 #### 1C: Ausrichten - Raumrotation und XY-Ursprung manuell anpassen
 
-- **1.5.: Rotation um die Z-Achse manuell festlegen**  
+- **1.5: Rotation um die Z-Achse manuell festlegen**  
       Die validierte Draufsicht aus dem FloorRaw-KS wird manuell so rotiert, dass der Raum möglichst parallel zur X- und Y-Achse im Sim-KS liegt. 
       Die Rotation um den Ursprung des FloorRaw-KS, der zunächst im Mittelpunkt der validierten Bodenebene liegt.
       **Output:** Rotationswinkel um die Z-Achse
 
-- **1.5.: XY-Ursprung manuell setzen**
+- **1.5: XY-Ursprung manuell setzen**
       Ursprung von X und Y wird manuell in eine sinnvolle Raumecke verschoben.  
       **Output:** Verschiebung des Koordinatenursprungs und Transformation zwischen FloorRaw-KS und Sim-KS
 
@@ -64,24 +64,21 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 #### 1D: Transformation - Gesamttransformation prüfen und speichern
 
-- **1.6.: Gesamttransformation zusammensetzen**  
+- **1.6: Gesamttransformation zusammensetzen**  
   Bodenausrichtung, Rotation und XY-Ursprung werden zu einer Gesamttransformation kombiniert. Zusätzlich wird die inverse Transformation berechnet.  
   **Output:** `transform.yaml` mit Gesamttransformation und inverser Transformation zwischen Splat-KS und Sim-KS
 
-- **1.6.: Top-Down-Grid aus Sim-Koordinaten erzeugen**  
+- **1.6: Top-Down-Grid aus Sim-Koordinaten erzeugen**  
   Die Splat-Mittelpunkte werden mit der Gesamttransformation ins Sim-KS transformiert und innerhalb des gewählten Höhenbereichs als Occupancy Grid gespeichert.  
   **Output:** `top_down_grid.npz` mit Occupancy Grid, Zellgröße, Ursprung, Höhenbereich und Transformationsmatrizen
 
 ---
 
-### Schritt 2. Fahrweg festlegen und Bilddaten generieren
+### Schritt 2. Trajektorie festlegen und Bilddaten generieren
 
-- **Fahrweg auswählen**  
-  Mögliche Varianten:
+- **2.1: Trajektorie auswählen**  
   - Trajektorie in Top-Down-View einzeichnen
-  - manuelle Steuerung mit W, A, S, D  
-  (**Herausforderung:** "Glätten" der Trajektorie zur Simulation einer Fahrphysik)  
-  **Output:** Geplante oder aufgezeichnete Fahrtrajektorie im 
+  **Output:** Wegpunkte der geplanten Trajektorie in .csv Datei
 
 - **Kamerapositionen entlang des Fahrwegs bestimmen**  
   **Parameter:** z-Höhe, Spacing, "Kameraintrinsik", ...  
@@ -112,9 +109,8 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 ---
 
 ## Offene Fragen
-
-- Welche Grenzwerte / Metriken für sinnvolle Ebenenauswahl?
-- Top-Down-Trajektorie oder WASD-Steuerung?
+- Tatsächlich immer mit Transformation arbeiten oder Splat-Datei einmalig transformieren?
+- Wie viele Frames pro Wegstrecke?
 - Konvertierung von gewählter Trajektorie zu Kameraposen?
 - Welche Lokalisierungsalgorithmen sollen getestet werden?
 

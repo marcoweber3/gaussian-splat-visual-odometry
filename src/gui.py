@@ -1,3 +1,4 @@
+import csv
 import os
 import dearpygui.dearpygui as dpg
 from tkinter import Tk
@@ -18,6 +19,7 @@ step1_floor_view_cache = {}
 step1_validated_floor_data = None
 step1_alignment_data = None
 step1_final_transform_data = None
+step2_splat_output_dir = None
 
 # select ply file
 def show_file_dialog():
@@ -485,6 +487,204 @@ def show_saved_top_down_grid():
     final_transform.show_top_down_grid(step1_final_transform_data["top_down_grid"])
 
 
+def set_step2a_status(text):
+    dpg.set_value("2a_output_text", text)
+    dpg.render_dearpygui_frame()
+
+
+def select_splat_output_folder():
+    """Select a splats/... output folder for step 2"""
+
+    global step2_splat_output_dir
+
+    root = Tk()
+    root.withdraw()
+
+    initial_dir = "splats"
+    if not os.path.isdir(initial_dir):
+        initial_dir = "."
+
+    # selection for splat output folder
+    selected_folder = filedialog.askdirectory(
+        title="Splat-Ordner auswaehlen",
+        initialdir=initial_dir,
+    )
+    root.destroy()
+
+    if not selected_folder:
+        return
+
+    selected_folder = os.path.normpath(selected_folder)
+    dpg.set_value("splat_output_folder_input", selected_folder)
+    step2_splat_output_dir = selected_folder
+
+    # grid file from step 1D
+    grid_file_path = os.path.join(selected_folder, "top_down_grid.npz")
+
+    if not os.path.isfile(grid_file_path):
+        set_step2a_status("top_down_grid.npz nicht gefunden")
+        return
+
+    set_step2a_status("top_down_grid.npz gefunden")
+
+
+def load_top_down_grid(grid_file_path):
+    """Load the grid values needed for trajectory drawing"""
+
+    import numpy as np
+
+    # npz file from step 1D
+    data = np.load(grid_file_path)
+    occupancy_grid = data["occupancy_grid"]
+
+    # size per grid cell in Sim coordinates
+    cell_size = float(data["cell_size"])
+    origin_xy = data["origin_xy"]
+
+    data.close()
+
+    return occupancy_grid, cell_size, origin_xy
+
+
+def save_trajectory_csv(file_path, points_xy):
+    # save trajectory point list for 2a
+    with open(file_path, "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["point_index", "x", "y"])
+
+        for index, point in enumerate(points_xy):
+            writer.writerow([index, format(point[0], ".6f"), format(point[1], ".6f")])
+
+
+def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
+    """Draw waypoints on top-down grid"""
+
+    import matplotlib.pyplot as plt
+
+    # load map and scale values from the selected splat folder
+    occupancy_grid, cell_size, origin_xy = load_top_down_grid(grid_file_path)
+
+    if occupancy_grid.size == 0:
+        return None, "top_down_grid.npz ist leer"
+
+    height = occupancy_grid.shape[0] * cell_size
+    width = occupancy_grid.shape[1] * cell_size
+
+    # sim coordinates for matplotlib axes
+    x_min = origin_xy[0]
+    y_min = origin_xy[1]
+    x_max = x_min + width
+    y_max = y_min + height
+
+    points_xy = []
+    saved_points_xy = []
+    title_text = "Rechtsklick: Wegpunkt setzen , Enter: speichern , Schließen: verwerfen\n Für Kurven: mehrere Punkte eng setzen"
+
+    # create matplotlib window
+    fig, ax = plt.subplots(num="Trajektorie einzeichen")
+
+    # draw grid
+    ax.imshow(
+        occupancy_grid,
+        origin="lower",
+        extent=[x_min, x_max, y_min, y_max],
+        interpolation="nearest",
+    )
+    ax.set_xlabel("x im Sim-KS")
+    ax.set_ylabel("y im Sim-KS")
+    ax.set_title(title_text)
+
+    #line is updated when new waypoint is added
+    trajectory_line, = ax.plot([], [], "o-", color="tab:red", linewidth=1, markersize=3)
+
+    def redraw_line():
+        # x and y values as separate lists for matplotlib
+        x_values = [point[0] for point in points_xy]
+        y_values = [point[1] for point in points_xy]
+        trajectory_line.set_data(x_values, y_values)
+        fig.canvas.draw_idle()
+
+    def on_click(event):
+        if event.inaxes != ax:
+            return
+
+        if event.xdata is None or event.ydata is None:
+            return
+
+        # right click adds a waypoint.
+        if event.button == 3:
+            points_xy.append([float(event.xdata), float(event.ydata)])
+            ax.set_title(title_text)
+            redraw_line()
+
+    def on_key(event):
+        # Enter saves the trajectory
+        if event.key == "enter":
+            if len(points_xy) < 2:
+                ax.set_title("Mindestens zwei Wegpunkte setzen")
+                fig.canvas.draw_idle()
+                return
+
+            # Copy the points into this list so we know Enter was pressed.
+            saved_points_xy.clear()
+            saved_points_xy.extend(points_xy)
+            save_trajectory_csv(trajectory_file_path, saved_points_xy)
+            plt.close(fig)
+
+    fig.canvas.mpl_connect("button_press_event", on_click)
+    fig.canvas.mpl_connect("key_press_event", on_key)
+
+    plt.show()
+
+    # window closed without Enter, nothing is saved
+    if len(saved_points_xy) == 0:
+        return None, "Verworfen"
+
+    return len(saved_points_xy), "Trajektorie gespeichert"
+
+
+def start_trajectory_drawing():
+    """Start step 2A trajectory drawing for the selected splat folder"""
+
+    global step2_splat_output_dir
+
+    selected_folder = dpg.get_value("splat_output_folder_input").strip()
+
+    if selected_folder == "":
+        set_step2a_status("Erst Ordner auswaehlen")
+        return
+
+    selected_folder = os.path.normpath(selected_folder)
+    dpg.set_value("splat_output_folder_input", selected_folder)
+    step2_splat_output_dir = selected_folder
+
+    # selected folder must contain .npz file from step 1d
+    grid_file_path = os.path.join(selected_folder, "top_down_grid.npz")
+
+    if not os.path.isfile(grid_file_path):
+        set_step2a_status("top_down_grid.npz nicht gefunden")
+        return
+
+    trajectory_file_path = os.path.join(selected_folder, "trajectory.csv")
+
+    # open matplotlib and wait until the user saves or closes window
+    point_count, result_message = draw_trajectory_on_grid(grid_file_path, trajectory_file_path)
+
+    if point_count is None:
+        set_step2a_status(result_message)
+        return
+
+    set_step2a_status(
+        result_message
+        + "\n"
+        + trajectory_file_path
+        + "\n"
+        + str(point_count)
+        + " Wegpunkte"
+    )
+    set_tab_done("step2_tab_2a", "2A: Trajektorie")
+
+
 def run_plane_search():
     global step1_point_cloud
     global step1_plane_candidates
@@ -653,12 +853,35 @@ def build_step1_area():
 
 def build_step2_area():
 
-    with dpg.collapsing_header(label="Schritt 2: Fahrweg festlegen und Bilddaten generieren"):
+    with dpg.collapsing_header(label="Schritt 2: Trajektorie festlegen und Bilddaten generieren"):
         with dpg.tab_bar(tag="step2_tab_bar"):
 
             # section 2A
-            with dpg.tab(label="2A: Fahrweg", tag="step2_tab_2a"):
-                dpg.add_text("Fahrweg festlegen")
+            with dpg.tab(label="2A: Trajektorie", tag="step2_tab_2a"):
+                dpg.add_text("Trajektorie festlegen")
+
+                dpg.add_text("Wähle den Ordner aus `splats/...`, der zu deiner Splat-Datei gehört. Daraus wird die gespeicherte Top-Down-Karte und später Transformation geladen.")
+
+                with dpg.group(horizontal=True):
+                    dpg.add_input_text(tag="splat_output_folder_input", width=650)
+                    dpg.add_button(label="Ordner auswaehlen", callback=select_splat_output_folder)
+
+                dpg.add_text("Hinweis: Die Trajektorie besteht aus geraden Linien zwischen den Wegpunkten.")
+                dpg.add_text("Fuer Kurven bitte mehrere Punkte eng hintereinander setzen.")
+                dpg.add_text("Reine Drehungen auf der Stelle oder Kurvenglättungen werden nicht automatisch erzeugt.")
+                dpg.add_text("Im Zeichenfenster setzt Rechtsklick einen Wegpunkt")
+                dpg.add_text("Mit Enter wird gespeichert, beim Schliessen wird verworfen.")
+
+                dpg.add_button(label="Trajektorie einzeichnen", callback=start_trajectory_drawing)
+                dpg.add_separator()
+                dpg.add_input_text(
+                    tag="2a_output_text",
+                    default_value="",
+                    multiline=True,
+                    readonly=True,
+                    width=700,
+                    height=100,
+                )
 
             # section 2B
             with dpg.tab(label="2B: Bilddaten", tag="step2_tab_2b"):
