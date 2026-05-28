@@ -710,6 +710,7 @@ def generate_camera_poses():
         return
 
     trajectory_file_path = os.path.join(step2_splat_output_dir, "trajectory.csv")
+    camera_poses_file_path = os.path.join(step2_splat_output_dir, "camera_poses_neutral_format.csv")
 
     if not os.path.isfile(trajectory_file_path):
         set_step2b_status("trajectory.csv nicht gefunden")
@@ -728,6 +729,9 @@ def generate_camera_poses():
         # combine frame, position and yaw in one list
         step2_camera_poses = camera_pose_generator.build_camera_poses(points, camera_height, yaw_angles,)
 
+        # save poses to csv in the same folder in case program crashes
+        camera_pose_generator.save_camera_poses_csv(camera_poses_file_path, step2_camera_poses)
+
     except ValueError as error:
         set_step2b_status(str(error))
         return
@@ -739,6 +743,9 @@ def generate_camera_poses():
         + "\n"
         + "Kameraposen: "
         + str(len(step2_camera_poses))
+        + "\n"
+        + "Datei: "
+        + camera_poses_file_path
         + "\n"
         + "Pose-Abstand: "
         + format(camera_pose_generator.POSE_SPACING, ".2f")
@@ -946,7 +953,7 @@ def build_step2_area():
                     default_value="",
                     multiline=True,
                     readonly=True,
-                    width=700,
+                    width=970,
                     height=100,
                 )
 
@@ -962,7 +969,7 @@ def build_step2_area():
                     default_value="",
                     multiline=True,
                     readonly=True,
-                    width=700,
+                    width=970,
                     height=140,
                 )
 
@@ -998,7 +1005,7 @@ def main():
         build_step2_area()
         build_step3_area()
 
-    dpg.create_viewport(title="Splat Localization Benchmark", width=1000, height=750)
+    dpg.create_viewport(title="Splat Localization Benchmark", width=1000, height=800)
     dpg.setup_dearpygui()
 
     dpg.set_primary_window("main_window", True)

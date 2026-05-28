@@ -114,3 +114,27 @@ def build_camera_poses(points, camera_height, yaw_angles):
         camera_poses.append([frame, x, y, z, yaw_deg])
 
     return camera_poses
+
+
+def save_camera_poses_csv(file_path, camera_poses):
+    """Save the neutral camera poses as csv"""
+
+    # simple pose format into csv
+    with open(file_path, "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["frame", "x", "y", "z", "yaw_deg"])
+
+        for pose in camera_poses:
+            frame = pose[0]
+            x = pose[1]
+            y = pose[2]
+            z = pose[3]
+            yaw_deg = pose[4]
+
+            writer.writerow([
+                frame,
+                format(x, ".6f"),
+                format(y, ".6f"),
+                format(z, ".6f"),
+                format(yaw_deg, ".6f"),
+            ])

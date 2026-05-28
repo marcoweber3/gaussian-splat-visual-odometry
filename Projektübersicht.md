@@ -80,7 +80,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 - **2.2: Kamerapositionen entlang der Trajektorie bestimmen**  
   **Parameter:** z-Höhe, Spacing, Lookahead um Kameraausrichtung zu glätten
-  **Output:** Folge von Kameraposen im Sim-KS
+  **Output:** `camera_poses_neutral_format.csv` Kameraposen im Format x,y,z,yaw_deg im Sim-KS
 
 - **Kameraposen für das Rendering transformieren**  
   Die Kameraposen werden passend zum ursprünglichen Gaussian Splat transformiert.  
