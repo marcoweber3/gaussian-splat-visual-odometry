@@ -8,6 +8,7 @@ step1 = __import__("1a_find_plane_candidates")
 floor_view = __import__("1b_interactive_floor_validation")
 floor_alignment = __import__("1c_manual_floor_alignment")
 final_transform = __import__("1d_build_transform")
+camera_pose_generator = __import__("2b_generate_camera_poses")
 
 
 STEP_OPEN = "[  ]"
@@ -20,6 +21,7 @@ step1_validated_floor_data = None
 step1_alignment_data = None
 step1_final_transform_data = None
 step2_splat_output_dir = None
+step2_camera_poses = None
 
 # select ply file
 def show_file_dialog():
@@ -685,6 +687,71 @@ def start_trajectory_drawing():
     set_tab_done("step2_tab_2a", "2A: Trajektorie")
 
 
+def set_step2b_status(text):
+    dpg.set_value("2b_output_text", text)
+    dpg.render_dearpygui_frame()
+
+
+def generate_camera_poses():
+    """Generate camera poses from trajectory.csv"""
+
+    global step2_camera_poses
+
+    step2_camera_poses = None
+
+    if step2_splat_output_dir is None:
+        set_step2b_status("Erst in 2A einen Splat-Ausgabeordner auswaehlen")
+        return
+
+    try:
+        camera_height = float(dpg.get_value("camera_height_input"))
+    except (TypeError, ValueError):
+        set_step2b_status("Ungueltige Kamerahoehe")
+        return
+
+    trajectory_file_path = os.path.join(step2_splat_output_dir, "trajectory.csv")
+
+    if not os.path.isfile(trajectory_file_path):
+        set_step2b_status("trajectory.csv nicht gefunden")
+        return
+
+    try:
+        # load the manually drawn waypoints from step 2A
+        waypoints = camera_pose_generator.load_trajectory_csv(trajectory_file_path)
+
+        # create camera positions in a fixed distance
+        points = camera_pose_generator.create_evenly_spaced_points(waypoints, camera_pose_generator.POSE_SPACING)
+
+        # calculate the looking direction for every camera point
+        yaw_angles = camera_pose_generator.compute_yaw_angles(points, camera_pose_generator.LOOKAHEAD_STEPS)
+
+        # combine frame, position and yaw in one list
+        step2_camera_poses = camera_pose_generator.build_camera_poses(points, camera_height, yaw_angles,)
+
+    except ValueError as error:
+        set_step2b_status(str(error))
+        return
+
+    set_step2b_status(
+        "Kameraposen generiert\n\n"
+        + "Wegpunkte: "
+        + str(len(waypoints))
+        + "\n"
+        + "Kameraposen: "
+        + str(len(step2_camera_poses))
+        + "\n"
+        + "Pose-Abstand: "
+        + format(camera_pose_generator.POSE_SPACING, ".2f")
+        + "\n"
+        + "Kamerahoehe: "
+        + format(camera_height, ".2f")
+        + "\n"
+        + "Lookahead-Schritte: "
+        + str(camera_pose_generator.LOOKAHEAD_STEPS)
+    )
+    set_tab_done("step2_tab_2b", "2B: Bilddaten")
+
+
 def run_plane_search():
     global step1_point_cloud
     global step1_plane_candidates
@@ -884,8 +951,20 @@ def build_step2_area():
                 )
 
             # section 2B
-            with dpg.tab(label="2B: Bilddaten", tag="step2_tab_2b"):
-                dpg.add_text("Bilddaten generieren")
+            with dpg.tab(label="2B: Kameraposen", tag="step2_tab_2b"):
+                dpg.add_text("Kameraposen generieren")
+                dpg.add_text("Kamerahoehe ueber Boden")
+                dpg.add_input_float(tag="camera_height_input", default_value=0.4, width=160)
+                dpg.add_button(label="Kameraposen generieren", callback=generate_camera_poses)
+                dpg.add_separator()
+                dpg.add_input_text(
+                    tag="2b_output_text",
+                    default_value="",
+                    multiline=True,
+                    readonly=True,
+                    width=700,
+                    height=140,
+                )
 
 
 def build_step3_area():

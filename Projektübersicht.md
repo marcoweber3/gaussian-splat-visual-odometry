@@ -30,9 +30,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
   **Schritte:**  
   1. Mit RANSAC eine Ebene aus (reduzierter) Punktwolke bestimmen -> Ebenengleichung + Inlier Indices  
   2. Inlier der gefundenen Ebene aus der Punktwolke entfernen -> Reduzierte Punktwolke  
-  3. n-mal wiederholen, um n Ebenenkandidaten zu finden  
-  4. (Ebenensuche bei Bedarf manuell nochmals mit angepasster `distance_threshold` wiederholen)  
-
+  3. n-mal wiederholen, um n Ebenenkandidaten zu finden
   **Output:** Liste mit Ebenenkandidaten für Bodenebene, z.B. mit Boden, Wände, Decke
 
 #### 1B: Boden wählen - Ebenenkandidaten anzeigen und richtige Bodenebene auswählen
@@ -80,8 +78,8 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
   - Trajektorie in Top-Down-View einzeichnen
   **Output:** Wegpunkte der geplanten Trajektorie in .csv Datei
 
-- **Kamerapositionen entlang des Fahrwegs bestimmen**  
-  **Parameter:** z-Höhe, Spacing, "Kameraintrinsik", ...  
+- **2.2: Kamerapositionen entlang der Trajektorie bestimmen**  
+  **Parameter:** z-Höhe, Spacing, Lookahead um Kameraausrichtung zu glätten
   **Output:** Folge von Kameraposen im Sim-KS
 
 - **Kameraposen für das Rendering transformieren**  
