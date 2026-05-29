@@ -1,0 +1,3 @@
+[submodule "extern/Monocular-Video-Odometery"]
+	path = extern/Monocular-Video-Odometery
+	url = https://github.com/marcoweber3/Monocular-Video-Odometery.git
