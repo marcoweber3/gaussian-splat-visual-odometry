@@ -5,7 +5,7 @@ import csv
 import numpy as np
 
 
-POSE_SPACING = 0.10
+POSE_SPACING = 0.05
 LOOKAHEAD_STEPS = 3
 
 

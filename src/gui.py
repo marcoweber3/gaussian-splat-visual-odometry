@@ -1,5 +1,8 @@
 import csv
 import os
+import subprocess
+import sys
+import threading
 import dearpygui.dearpygui as dpg
 from tkinter import Tk
 from tkinter import filedialog
@@ -15,7 +18,8 @@ visual_odometry_prepare = __import__("3a_prepare_visual_odometry_data")
 
 STEP_OPEN = "[  ]"
 STEP_DONE = "[OK]"
-STEP3_OUTPUT_FOLDER_NAME = "visual_odometry_data"
+STEP3_OUTPUT_FOLDER_NAME = "odometry_input"
+STEP3_ODOM_OUTPUT_FOLDER_NAME = "odometry_output"
 STEP3_IMAGES_FOLDER_NAME = "images"
 STEP3_POSES_FILE_NAME = "poses.txt"
 
@@ -808,7 +812,7 @@ def generate_camera_poses():
         + "Lookahead-Schritte: "
         + str(camera_pose_generator.LOOKAHEAD_STEPS)
     )
-    set_tab_done("step2_tab_2b", "2B: Bilddaten")
+    set_tab_done("step2_tab_2b", "2B: Kameraposen")
 
 
 def set_step2c_status(text):
@@ -967,7 +971,7 @@ def select_step3a_splat_output_folder():
             + "Bilder gefunden: "
             + str(image_count)
         )
-        set_tab_done("step3_tab_3a", "3A: Lokalisierung")
+        set_tab_done("step3_tab_3a", "3A: Daten vorbereiten")
     else:
         set_step3a_status("Splat-Ausgabeordner gesetzt.\n\nNoch keine vorbereiteten Daten gefunden.")
 
@@ -1029,7 +1033,60 @@ def prepare_visual_odometry_data():
         + "Kameraposen geladen: "
         + str(num_poses)
     )
-    set_tab_done("step3_tab_3a", "3A: Lokalisierung")
+    set_tab_done("step3_tab_3a", "3A: Daten vorbereiten")
+
+
+def run_visual_odometry():
+    global step3_odom_data_path
+
+    odom_data_path = step3_odom_data_path
+
+    if odom_data_path is None:
+        selected_folder = dpg.get_value("3a_splat_output_folder_input").strip()
+
+        if selected_folder != "":
+            odom_data_path = os.path.join(os.path.normpath(selected_folder), STEP3_OUTPUT_FOLDER_NAME)
+
+    if odom_data_path is None or not os.path.isdir(odom_data_path):
+        dpg.set_value("3b_status_text", "Erst Daten in 3A vorbereiten oder Splat-Ordner auswaehlen")
+        return
+
+    image_output_dir = os.path.abspath(os.path.join(odom_data_path, STEP3_IMAGES_FOLDER_NAME))
+    poses_output_file = os.path.abspath(os.path.join(odom_data_path, STEP3_POSES_FILE_NAME))
+
+    if not os.path.isdir(image_output_dir):
+        dpg.set_value("3b_status_text", "Bilderordner nicht gefunden")
+        return
+
+    if not os.path.isfile(poses_output_file):
+        dpg.set_value("3b_status_text", "poses.txt nicht gefunden")
+        return
+
+    step3_odom_data_path = odom_data_path
+    script_folder = os.path.abspath(os.path.join("extern", "Monocular-Video-Odometery"))
+    script_file = os.path.join(script_folder, "run_odom.py")
+    output_folder = os.path.abspath(os.path.join(os.path.dirname(odom_data_path), STEP3_ODOM_OUTPUT_FOLDER_NAME))
+    os.makedirs(output_folder, exist_ok=True)
+    output_file = os.path.join(output_folder, "vo_output.csv")
+
+    process = subprocess.Popen([
+        sys.executable,
+        script_file,
+        "--img_path",
+        image_output_dir + os.sep,
+        "--pose_path",
+        poses_output_file,
+        "--csv_path",
+        output_file,
+    ], cwd=script_folder)
+
+    dpg.set_value("3b_status_text", "Odometrie gestartet")
+
+    def wait_for_odometry():
+        process.wait()
+        dpg.set_value("3b_status_text", "Odometry Daten gespeichert unter:\n" + output_file)
+
+    threading.Thread(target=wait_for_odometry, daemon=True).start()
 
 
 def run_plane_search():
@@ -1132,7 +1189,7 @@ def validate_floor_plane():
 def build_step1_area():
     
     # main steps are vertical collapsing headers
-    with dpg.collapsing_header(label="Schritt 1: Koordinatentransformation generieren", default_open=True):     
+    with dpg.collapsing_header(label="Schritt 1: Koordinatentransformation generieren", default_open=False):     
         
         with dpg.tab_bar(tag="step1_tab_bar"):
         # substeps are tabs inside the main step
@@ -1249,7 +1306,9 @@ def build_step3_area():
         with dpg.tab_bar(tag="step3_tab_bar"):
             
             # section 3A
-            with dpg.tab(label="3A: Lokalisierung", tag="step3_tab_3a"):
+            with dpg.tab(label="3A: Daten vorbereiten", tag="step3_tab_3a"):
+                dpg.add_text("Daten für visuelle Odometrie vorbereiten")
+                dpg.add_text("Wähle (falls nicht bereits hinterlegt) den Ordner aus `splats/...`, der zu deiner Splat-Datei gehört.\nDaraus wird das exportierte Video und die generierten Kameraposen verwendet.")
                 default_splat_folder = ""
                 if step2_splat_output_dir is not None:
                     default_splat_folder = step2_splat_output_dir
@@ -1262,8 +1321,10 @@ def build_step3_area():
                 dpg.add_input_text(tag="3a_output_text", default_value="", multiline=True, readonly=True, width=970, height=220)
 
             # section 3B
-            with dpg.tab(label="3B: Evaluation", tag="step3_tab_3b"):
-                dpg.add_text("Evaluation anzeigen")
+            with dpg.tab(label="3B: Odometrie ausführen", tag="step3_tab_3b"):
+                dpg.add_text("Odometrie ausführen")
+                dpg.add_button(label="Odometrie starten", callback=run_visual_odometry)
+                dpg.add_input_text(tag="3b_status_text", default_value="", multiline=True, readonly=True, width=970, height=80)
 
 
 def main():
