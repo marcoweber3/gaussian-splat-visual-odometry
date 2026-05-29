@@ -97,20 +97,17 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
   Visuelle Odometrie über OpenCV basierend auf: https://github.com/alishobeiri/Monocular-Video-Odometery/tree/master
   **Output:** Im Ordner `odometry_input`: `vo_output.csv` mit geschätzten und tatsächlichen Positionen uvm.
 
-- **Geschätzte Trajektorie mit echter Trajektorie vergleichen**  
-  **Output:** Abweichung und Top-Down visualisierung zwischen Ursprünglicher Trajektorie und Schätzung durch Algo
+- **3.3: Geschätzte Trajektorie mit echter Trajektorie vergleichen**  
+  **Output:** Top-Down visualisierung zwischen Ursprünglicher Trajektorie und Schätzung durch Visual Odometry
 
 ---
 
 ## Offene Fragen
-- Tatsächlich immer mit Transformation arbeiten oder Splat-Datei einmalig transformieren?
-- Wie viele Frames pro Wegstrecke?
-- Konvertierung von gewählter Trajektorie zu Kameraposen?
-- Welche Lokalisierungsalgorithmen sollen getestet werden?
+
 
 
 ## ToDo's
 
 
 ### Optionale ToDo's
-- RANSAC Parameter über UI anpassbar machen - Verbessert Verwendbarkeit für verschiedene Splats mit unterschiedlichen Skalierungen. (Alternativ: Optimal-Parameter über Punktwolke schätzen!?)
+- Datenbasiertere Evaluation

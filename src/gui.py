@@ -14,6 +14,7 @@ final_transform = __import__("1d_build_transform")
 camera_pose_generator = __import__("2b_generate_camera_poses")
 supersplat_export = __import__("2c_export_supersplat")
 visual_odometry_prepare = __import__("3a_prepare_visual_odometry_data")
+odometry_evaluation = __import__("3c_evaluation")
 
 
 STEP_OPEN = "[  ]"
@@ -1116,6 +1117,47 @@ def run_visual_odometry():
     threading.Thread(target=wait_for_odometry, daemon=True).start()
 
 
+def set_step3c_status(text):
+    dpg.set_value("3c_status_text", text)
+    dpg.render_dearpygui_frame()
+
+
+def show_evaluation_plot():
+    selected_folder = ""
+
+    if dpg.does_item_exist("3a_splat_output_folder_input"):
+        selected_folder = dpg.get_value("3a_splat_output_folder_input").strip()
+
+    if selected_folder == "" and step3_odom_data_path is not None:
+        selected_folder = os.path.dirname(step3_odom_data_path)
+
+    if selected_folder == "" and step2_splat_output_dir is not None:
+        selected_folder = step2_splat_output_dir
+
+    if selected_folder == "":
+        set_step3c_status("Erst Splat-Ausgabeordner auswaehlen")
+        return
+
+    csv_file = os.path.join(
+        os.path.normpath(selected_folder),
+        STEP3_ODOM_OUTPUT_FOLDER_NAME,
+        "vo_output.csv",
+    )
+    grid_file = os.path.join(os.path.normpath(selected_folder), "top_down_grid.npz")
+
+    if not os.path.isfile(csv_file):
+        set_step3c_status("vo_output.csv nicht gefunden")
+        return
+
+    try:
+        odometry_evaluation.plot_odometry_csv(csv_file, grid_file)
+    except ValueError as error:
+        set_step3c_status(str(error))
+        return
+
+    set_step3c_status("Evaluation angezeigt:\n" + csv_file)
+
+
 def run_plane_search():
     global step1_point_cloud
     global step1_plane_candidates
@@ -1358,6 +1400,11 @@ def build_step3_area():
                 dpg.add_text("Odometrie ausführen")
                 dpg.add_button(label="Odometrie starten", callback=run_visual_odometry)
                 dpg.add_input_text(tag="3b_status_text", default_value="", multiline=True, readonly=True, width=970, height=80)
+
+            # section 3C
+            with dpg.tab(label="3C: Evaluation", tag="step3_tab_3c"):
+                dpg.add_button(label="Evaluation anzeigen", callback=show_evaluation_plot)
+                dpg.add_input_text(tag="3c_status_text", default_value="", multiline=True, readonly=True, width=970, height=80)
 
 
 def main():
