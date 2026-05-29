@@ -7,6 +7,7 @@ import numpy as np
 
 POSE_SPACING = 0.05
 LOOKAHEAD_STEPS = 3
+SMOOTHING_ROUNDS = 5
 
 
 def load_trajectory_csv(file_path):
@@ -67,6 +68,30 @@ def create_evenly_spaced_points(waypoints, spacing):
         points.append(waypoints[-1])
 
     return np.array(points, dtype=float)
+
+
+def smooth_points(points, smoothing_rounds):
+    """Smooth trajectory points with simple neighbor averaging"""
+
+    if len(points) < 3:
+        return points
+
+    smoothed_points = points.copy()
+
+    for _ in range(smoothing_rounds):
+        new_points = smoothed_points.copy()
+
+        # keep first and last point fixed
+        for index in range(1, len(smoothed_points) - 1):
+            new_points[index] = (
+                0.25 * smoothed_points[index - 1]
+                + 0.50 * smoothed_points[index]
+                + 0.25 * smoothed_points[index + 1]
+            )
+
+        smoothed_points = new_points
+
+    return smoothed_points
 
 
 def compute_yaw_angles(points, lookahead_steps):

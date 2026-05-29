@@ -765,6 +765,26 @@ def generate_camera_poses():
         set_step2b_status("Ungueltige Kamerahoehe")
         return
 
+    try:
+        pose_spacing = float(dpg.get_value("pose_spacing_input"))
+        lookahead_steps = int(dpg.get_value("lookahead_steps_input"))
+        smoothing_rounds = int(dpg.get_value("smoothing_rounds_input"))
+    except (TypeError, ValueError):
+        set_step2b_status("Ungueltige 2B-Einstellung")
+        return
+
+    if pose_spacing <= 0:
+        set_step2b_status("Pose-Abstand muss groesser 0 sein")
+        return
+
+    if lookahead_steps < 1:
+        set_step2b_status("Lookahead-Schritte muessen mindestens 1 sein")
+        return
+
+    if smoothing_rounds < 0:
+        set_step2b_status("Glaettungsrunden duerfen nicht negativ sein")
+        return
+
     trajectory_file_path = os.path.join(step2_splat_output_dir, "trajectory.csv")
     camera_poses_file_path = os.path.join(step2_splat_output_dir, "camera_poses_sim.csv")
 
@@ -777,10 +797,13 @@ def generate_camera_poses():
         waypoints = camera_pose_generator.load_trajectory_csv(trajectory_file_path)
 
         # create camera positions in a fixed distance
-        points = camera_pose_generator.create_evenly_spaced_points(waypoints, camera_pose_generator.POSE_SPACING)
+        points = camera_pose_generator.create_evenly_spaced_points(waypoints, pose_spacing)
+
+        # smooth hard corners in the trajectory
+        points = camera_pose_generator.smooth_points(points, smoothing_rounds)
 
         # calculate the looking direction for every camera point
-        yaw_angles = camera_pose_generator.compute_yaw_angles(points, camera_pose_generator.LOOKAHEAD_STEPS)
+        yaw_angles = camera_pose_generator.compute_yaw_angles(points, lookahead_steps)
 
         # combine frame, position and yaw in one list
         step2_camera_poses = camera_pose_generator.build_camera_poses(points, camera_height, yaw_angles,)
@@ -804,13 +827,17 @@ def generate_camera_poses():
         + camera_poses_file_path
         + "\n"
         + "Pose-Abstand: "
-        + format(camera_pose_generator.POSE_SPACING, ".2f")
+        + format(pose_spacing, ".2f")
         + "\n"
         + "Kamerahoehe: "
         + format(camera_height, ".2f")
         + "\n"
         + "Lookahead-Schritte: "
-        + str(camera_pose_generator.LOOKAHEAD_STEPS)
+        + str(lookahead_steps)
+        + "\n"
+        + "Glaettung: "
+        + str(smoothing_rounds)
+        + " Runden"
     )
     set_tab_done("step2_tab_2b", "2B: Kameraposen")
 
@@ -900,7 +927,7 @@ def export_supersplat_images_txt():
         + position_text
         + rotation_text
         + "Skalierung: 1\n\n"
-        + "4. Über 'Datei' -> 'Importieren...' die Kameraposen durch folgende Datei importieren:\n\n"
+        + "4. Kameraposen über 'Datei' -> 'Importieren...' durch folgende Datei importieren:\n\n"
         + images_txt_path
         + "\n\n"
         + "Dadurch werden die Kameraposen als Frames in die Zeitleiste eingefuegt (ggf. Zeitleiste ganz unten links durch Klick auf 'ZEITLEISTE' aufklappen).\n\n"
@@ -908,7 +935,7 @@ def export_supersplat_images_txt():
         + str(len(camera_poses))
         + "\n\n"
         + "Eine Preview kann durch klick auf den Play-Button in der Zeitleiste gestartet werden.\n\n"
-        + "6. Video rendern ueber 'Rendern' -> 'Video...'.\n\n"
+        + "6. Video rendern ueber 'Rendern' -> 'Video...'. Auflösung optional auf 1280x720 stellen (schnelleres Rendern), Rest beibehalten.\n\n"
         + "7. Das Video in den erzeugten Video-Ordner exportieren:\n\n"
         + video_folder
         + "\n\n"
@@ -1285,6 +1312,12 @@ def build_step2_area():
                 dpg.add_text("Kameraposen generieren")
                 dpg.add_text("Kamerahoehe ueber Boden")
                 dpg.add_input_float(tag="camera_height_input", default_value=0.4, width=160)
+                dpg.add_text("Pose-Abstand")
+                dpg.add_input_float(tag="pose_spacing_input", default_value=camera_pose_generator.POSE_SPACING, width=160)
+                dpg.add_text("Lookahead-Schritte")
+                dpg.add_input_int(tag="lookahead_steps_input", default_value=camera_pose_generator.LOOKAHEAD_STEPS, width=160)
+                dpg.add_text("Glaettungsrunden")
+                dpg.add_input_int(tag="smoothing_rounds_input", default_value=camera_pose_generator.SMOOTHING_ROUNDS, width=160)
                 dpg.add_button(label="Kameraposen generieren", callback=generate_camera_poses)
                 dpg.add_separator()
                 dpg.add_input_text(tag="2b_output_text", default_value="", multiline=True, readonly=True, width=970, height=140)
