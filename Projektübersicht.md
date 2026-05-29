@@ -89,6 +89,9 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 ---
 
 ### Schritt 3. Lokalisierung auswerten
+- **3.1: Datenformate für Visual Odometry generieren**
+  **Input:** Videodatei (.mp4) aus Ordner `supersplat_video/`, `camera_poses_sim.csv`
+  **Output:** Im Ordner `visual_odometry_data`: Vereinzelte Bilder im Unterordner `/images`, Posen im Kitty-Format in `poses.txt`
 
 - **Lokalisierungsalgorithmus auf Bildsequenz anwenden**  
   Visuelle Odometrie oder SLAM.  

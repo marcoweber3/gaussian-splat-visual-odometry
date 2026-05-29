@@ -10,10 +10,14 @@ floor_alignment = __import__("1c_manual_floor_alignment")
 final_transform = __import__("1d_build_transform")
 camera_pose_generator = __import__("2b_generate_camera_poses")
 supersplat_export = __import__("2c_export_supersplat")
+visual_odometry_prepare = __import__("3a_prepare_visual_odometry_data")
 
 
 STEP_OPEN = "[  ]"
 STEP_DONE = "[OK]"
+STEP3_OUTPUT_FOLDER_NAME = "visual_odometry_data"
+STEP3_IMAGES_FOLDER_NAME = "images"
+STEP3_POSES_FILE_NAME = "poses.txt"
 
 step1_point_cloud = None
 step1_plane_candidates = None
@@ -24,6 +28,7 @@ step1_final_transform_data = None
 step2_splat_output_dir = None
 step2_camera_poses = None
 step2_images_txt_path = None
+step3_odom_data_path = None
 
 # select ply file
 def show_file_dialog():
@@ -532,6 +537,7 @@ def select_splat_output_folder():
     """Select a splats/... output folder for step 2"""
 
     global step2_splat_output_dir
+    global step3_odom_data_path
 
     root = Tk()
     root.withdraw()
@@ -552,7 +558,15 @@ def select_splat_output_folder():
 
     selected_folder = os.path.normpath(selected_folder)
     dpg.set_value("splat_output_folder_input", selected_folder)
+    if dpg.does_item_exist("3a_splat_output_folder_input"):
+        dpg.set_value("3a_splat_output_folder_input", selected_folder)
     step2_splat_output_dir = selected_folder
+
+    odom_data_path = os.path.join(selected_folder, STEP3_OUTPUT_FOLDER_NAME)
+    if os.path.isdir(odom_data_path):
+        step3_odom_data_path = odom_data_path
+    else:
+        step3_odom_data_path = None
 
     # grid file from step 1D
     grid_file_path = os.path.join(selected_folder, "top_down_grid.npz")
@@ -694,6 +708,8 @@ def start_trajectory_drawing():
 
     selected_folder = os.path.normpath(selected_folder)
     dpg.set_value("splat_output_folder_input", selected_folder)
+    if dpg.does_item_exist("3a_splat_output_folder_input"):
+        dpg.set_value("3a_splat_output_folder_input", selected_folder)
     step2_splat_output_dir = selected_folder
 
     # selected folder must contain .npz file from step 1d
@@ -895,6 +911,125 @@ def export_supersplat_images_txt():
         + "Danach mit Schritt 3A fortfahren."
     )
     set_tab_done("step2_tab_2c", "2C: SuperSplat Export")
+
+
+def set_step3a_status(text):
+    dpg.set_value("3a_output_text", text)
+    dpg.render_dearpygui_frame()
+
+
+def select_step3a_splat_output_folder():
+    global step3_odom_data_path
+
+    root = Tk()
+    root.withdraw()
+
+    initial_dir = "splats"
+    if not os.path.isdir(initial_dir):
+        initial_dir = "."
+
+    selected_folder = filedialog.askdirectory(
+        title="Splat-Ordner auswaehlen",
+        initialdir=initial_dir,
+    )
+    root.destroy()
+
+    if not selected_folder:
+        return
+
+    selected_folder = os.path.normpath(selected_folder)
+    dpg.set_value("3a_splat_output_folder_input", selected_folder)
+
+    odom_data_path = os.path.join(selected_folder, STEP3_OUTPUT_FOLDER_NAME)
+    image_output_dir = os.path.join(odom_data_path, STEP3_IMAGES_FOLDER_NAME)
+    poses_output_file = os.path.join(odom_data_path, STEP3_POSES_FILE_NAME)
+    image_count = 0
+
+    if os.path.isdir(odom_data_path):
+        step3_odom_data_path = odom_data_path
+    else:
+        step3_odom_data_path = None
+
+    if os.path.isdir(image_output_dir):
+        for file_name in os.listdir(image_output_dir):
+            if file_name.lower().endswith(".png"):
+                image_count += 1
+
+    if os.path.isfile(poses_output_file) and image_count > 0:
+        set_step3a_status(
+            "Vorhandene Daten gefunden.\n\n"
+            + "Bilder:\n"
+            + image_output_dir
+            + "\n\n"
+            + "Posen:\n"
+            + poses_output_file
+            + "\n\n"
+            + "Bilder gefunden: "
+            + str(image_count)
+        )
+        set_tab_done("step3_tab_3a", "3A: Lokalisierung")
+    else:
+        set_step3a_status("Splat-Ausgabeordner gesetzt.\n\nNoch keine vorbereiteten Daten gefunden.")
+
+
+def prepare_visual_odometry_data():
+    global step3_odom_data_path
+
+    selected_folder = dpg.get_value("3a_splat_output_folder_input").strip()
+
+    if selected_folder == "" and step2_splat_output_dir is not None:
+        selected_folder = step2_splat_output_dir
+        dpg.set_value("3a_splat_output_folder_input", selected_folder)
+
+    if selected_folder == "":
+        set_step3a_status("Erst Splat-Ausgabeordner auswaehlen")
+        return
+
+    selected_folder = os.path.normpath(selected_folder)
+    dpg.set_value("3a_splat_output_folder_input", selected_folder)
+
+    odom_data_path = os.path.join(selected_folder, STEP3_OUTPUT_FOLDER_NAME)
+    image_output_dir = os.path.join(odom_data_path, STEP3_IMAGES_FOLDER_NAME)
+    poses_output_file = os.path.join(odom_data_path, STEP3_POSES_FILE_NAME)
+
+    set_step3a_status("Daten werden vorbereitet...\nBilder werden vereinzelt...\nDas kann eine Weile dauern, bitte warten...")
+
+    try:
+        result = visual_odometry_prepare.prepare_visual_odometry_data(
+            selected_folder,
+            image_output_dir,
+            poses_output_file,
+        )
+    except ValueError as error:
+        set_step3a_status(str(error))
+        return
+
+    video_file, num_images, num_poses = result
+    step3_odom_data_path = odom_data_path
+
+    warning_text = ""
+    if num_images != num_poses:
+        warning_text = "Warnung: Anzahl Bilder und Posen unterscheiden sich.\n\n"
+
+    set_step3a_status(
+        "Daten vorbereitet.\n\n"
+        + warning_text
+        + "Verwendetes Video:\n"
+        + video_file
+        + "\n\n"
+        + "Extrahierte Bilder:\n"
+        + image_output_dir
+        + "\n\n"
+        + "Exportierte Kameraposen:\n"
+        + poses_output_file
+        + "\n\n"
+        + "Bilder extrahiert: "
+        + str(num_images)
+        + "\n"
+        + "Kameraposen geladen: "
+        + str(num_poses)
+    )
+    set_tab_done("step3_tab_3a", "3A: Lokalisierung")
 
 
 def run_plane_search():
@@ -1115,7 +1250,16 @@ def build_step3_area():
             
             # section 3A
             with dpg.tab(label="3A: Lokalisierung", tag="step3_tab_3a"):
-                dpg.add_text("Lokalisierung ausfuehren")
+                default_splat_folder = ""
+                if step2_splat_output_dir is not None:
+                    default_splat_folder = step2_splat_output_dir
+
+                with dpg.group(horizontal=True):
+                    dpg.add_input_text(tag="3a_splat_output_folder_input", default_value=default_splat_folder, width=650)
+                    dpg.add_button(label="Ordner auswaehlen", callback=select_step3a_splat_output_folder)
+
+                dpg.add_button(label="Daten vorbereiten", callback=prepare_visual_odometry_data)
+                dpg.add_input_text(tag="3a_output_text", default_value="", multiline=True, readonly=True, width=970, height=220)
 
             # section 3B
             with dpg.tab(label="3B: Evaluation", tag="step3_tab_3b"):
