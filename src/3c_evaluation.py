@@ -2,6 +2,7 @@ import csv
 import os
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 import numpy as np
 
 
@@ -53,12 +54,15 @@ def plot_odometry_csv(csv_file, grid_file):
             origin="lower",
             extent=[x_min, x_min + width, y_min, y_min + height],
             interpolation="nearest",
+            cmap=ListedColormap(["white", "black"]),
+            vmin=0,
+            vmax=1,
         )
 
         data.close()
 
     plt.plot(true_x, true_y, "r-", label="Echt")
-    plt.plot(estimated_x, estimated_y, "g-", label="Geschaetzt")
+    plt.plot(estimated_x, estimated_y, "g-", label="Geschätzt")
     plt.xlabel("x")
     plt.ylabel("y")
     plt.title("Visual Odometry Evaluation")

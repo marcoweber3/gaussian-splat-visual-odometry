@@ -13,7 +13,8 @@ SPLAT_FILE = r"C:\Temp\PLY\point_cloud_2.ply"
 RANSAC_DISTANCE_THRESHOLD = 0.05 # max distance from plane to include a point as an inlier
 RANSAC_N = 3 # number of initial points to test for (3 for a plane)
 RANSAC_NUM_ITERATIONS = 1000 # iterations to test different planes
-NUMBER_OF_PLANES = 5 # how many plane candidates should be found
+NUMBER_OF_PLANES = 3 # how many plane candidates should be found
+HIGH_RES_SPLAT_POINT_COUNT = 2000000
 
 
 def load_splat_file(file_path):
@@ -82,9 +83,14 @@ def run_step_1a(splat_file, status_callback):
     status_callback("1.2: Extrahiere Splat-Mittelpunkte...\n")
     point_cloud = extract_splat_centers(splat_data)
     status_callback("\tPunktwolke wurde extrahiert\n")
-    status_callback("\tAnzahl Punkte: " + str(len(point_cloud)) + "\n\n")
+    status_callback("\tAnzahl Punkte: " + str(len(point_cloud)) + "\n")
 
-    status_callback("1.3: Suche Kandidaten fuer Bodenebene...\n")
+    if len(point_cloud) > HIGH_RES_SPLAT_POINT_COUNT:
+        status_callback("\tHinweis: Hochaufgelöste Splats können beim Rendering in 1B und 1C etwas länger brauchen. Bitte Geduld.\n")
+
+    status_callback("\n")
+
+    status_callback("1.3: Suche Kandidaten für Bodenebene...\n")
     plane_candidates = find_plane_candidates(
         point_cloud,
         NUMBER_OF_PLANES,
@@ -101,7 +107,10 @@ def run_step_1a(splat_file, status_callback):
         status_callback("\t\t\tEbenenmodell: " + str(plane_model) + "\n")
         status_callback("\t\t\tAnzahl Inlier: " + str(len(inlier_points)) + "\n")
 
+    status_callback("\nFahre mit Schritt 1B fort!")
+
     return splat_data, point_cloud, plane_candidates
+
 
 
 def main():

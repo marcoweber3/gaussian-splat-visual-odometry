@@ -200,6 +200,7 @@ def show_top_down_grid(grid_file_path):
     """Show a saved top-down grid in a Matplotlib window"""
 
     import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
 
     data = np.load(grid_file_path)
     occupancy_grid = data["occupancy_grid"]
@@ -220,6 +221,9 @@ def show_top_down_grid(grid_file_path):
         origin="lower",
         extent=[x_min, x_max, y_min, y_max],
         interpolation="nearest",
+        cmap=ListedColormap(["white", "black"]),
+        vmin=0,
+        vmax=1,
     )
     plt.xlabel("x im Sim-KS")
     plt.ylabel("y im Sim-KS")

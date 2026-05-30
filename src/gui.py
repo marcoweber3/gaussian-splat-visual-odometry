@@ -1,5 +1,6 @@
 import csv
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -23,6 +24,13 @@ STEP3_OUTPUT_FOLDER_NAME = "odometry_input"
 STEP3_ODOM_OUTPUT_FOLDER_NAME = "odometry_output"
 STEP3_IMAGES_FOLDER_NAME = "images"
 STEP3_POSES_FILE_NAME = "poses.txt"
+HEADING_COLOR = (34*2, 83*2, 118*2)
+INSTRUCTION_COLOR = (248, 236, 185)
+OUTPUT_COLOR = (180, 180, 180)
+BUTTON_COLOR = (68, 64, 50, 255)
+BUTTON_HOVER_COLOR = (86, 80, 60, 255)
+BUTTON_ACTIVE_COLOR = (52, 49, 39, 255)
+PREVIEW_MAX_POINTS = 10000
 
 step1_point_cloud = None
 step1_plane_candidates = None
@@ -125,7 +133,7 @@ def draw_floor_preview(view_data, visible_points):
         parent="floor_candidate_preview"
     )
 
-    visible_points = floor_view.sample_points_for_drawing(visible_points, 10000)
+    visible_points = floor_view.sample_points_for_drawing(visible_points, PREVIEW_MAX_POINTS)
 
     for point in visible_points:
         x, y = to_screen(point)
@@ -153,7 +161,7 @@ def draw_floor_candidate(sender=None, app_data=None, user_data=None):
     view_data = get_floor_candidate_view_data()
 
     if view_data is None:
-        dpg.draw_text((20, 20), "Kein Kandidat ausgewaehlt", parent="floor_candidate_preview")
+        dpg.draw_text((20, 20), "Kein Kandidat ausgewählt", parent="floor_candidate_preview")
         return
 
     # read sliders and compute visible height range
@@ -168,11 +176,11 @@ def draw_floor_candidate(sender=None, app_data=None, user_data=None):
     dpg.set_value("floor_orientation_status", status_text)
     dpg.set_value(
         "floor_height_status",
-        "Sichtbarer Hoehenbereich: "
+        "Sichtbarer Höhenbereich: "
         + format(min_height, ".2f")
         + " bis "
         + format(max_height, ".2f")
-        + " ueber der Ebene"
+        + " über der Bodenebene"
     )
 
     visible_points, _ = floor_view.filter_points_by_height(view_data, min_height, max_height)
@@ -253,7 +261,7 @@ def draw_alignment_preview(points_2d):
     dpg.draw_rectangle((0, 0), (width, height), color=(80, 80, 80, 255), parent="floor_alignment_preview")
 
     if len(points_2d) == 0:
-        dpg.draw_text((20, 20), "Keine Punkte im validierten Hoehenbereich", parent="floor_alignment_preview")
+        dpg.draw_text((20, 20), "Keine Punkte im validierten Höhenbereich", parent="floor_alignment_preview")
         return
 
     x_min = min(points_2d[:, 0].min(), 0.0)
@@ -283,7 +291,7 @@ def draw_alignment_preview(points_2d):
     dpg.draw_line(y_axis_start, y_axis_end, color=(80, 180, 90, 180), thickness=1, parent="floor_alignment_preview")
     dpg.draw_circle(origin, 4, color=(255, 255, 255, 220), fill=(255, 255, 255, 120), parent="floor_alignment_preview")
 
-    points_2d = floor_view.sample_points_for_drawing(points_2d, 10000)
+    points_2d = floor_view.sample_points_for_drawing(points_2d, PREVIEW_MAX_POINTS)
 
     for point in points_2d:
         x, y = to_screen(point)
@@ -331,7 +339,7 @@ def draw_floor_alignment(sender=None, app_data=None, user_data=None):
         "1c_alignment_status",
         "Vorschau: "
         + str(len(visible_points_2d))
-        + " Punkte aus dem validierten Hoehenbereich"
+        + " Punkte aus dem validierten Höhenbereich"
     )
 
 
@@ -374,11 +382,11 @@ def accept_floor_alignment():
     }
     reset_final_transform_state()
 
-    show_status("1C: Ausrichtung uebernommen\n")
+    show_status("Ausrichtung übernommen\n")
     show_status("\tRotation um Z: " + format(yaw_deg, ".2f") + " Grad\n")
     show_status("\tUrsprung X: " + format(origin_x, ".2f") + "\n")
-    show_status("\tUrsprung Y: " + format(origin_y, ".2f") + "\n")
-    show_status("\tTransformation fuer 1D vorbereitet\n")
+    show_status("\tUrsprung Y: " + format(origin_y, ".2f") + "\n\n")
+    show_status("Fahre mit Schritt 1D fort")
 
     set_tab_done("step1_tab_1c", "1C: Ausrichten")
 
@@ -413,6 +421,10 @@ def calculate_final_transform():
     splat_file_name = os.path.basename(splat_file)
     splat_name = os.path.splitext(splat_file_name)[0]
     output_dir = os.path.join("splats", splat_name)
+    output_dir_exists = os.path.isdir(output_dir)
+
+    if output_dir_exists:
+        shutil.rmtree(output_dir)
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -468,46 +480,49 @@ def calculate_final_transform():
     step1_final_transform_data["supersplat_position"] = supersplat_position
     step1_final_transform_data["supersplat_rotation_deg"] = supersplat_rotation_deg
 
-    show_status("1D: Gesamttransformation berechnet\n")
-    show_status("\tKandidat: " + str(step1_validated_floor_data["candidate_number"]) + "\n")
-    show_status("\tRotation um Z: " + format(step1_alignment_data["yaw_deg"], ".2f") + " deg\n")
-    show_status("\tUrsprung X: " + format(step1_alignment_data["origin_x"], ".2f") + "\n")
-    show_status("\tUrsprung Y: " + format(step1_alignment_data["origin_y"], ".2f") + "\n\n")
+    show_status("Gesamttransformation berechnet: Occupancy Grid prüfen\n")
 
     if visible_point_count == 0:
-        show_status("Keine Punkte im gewaehlten Hoehenbereich gefunden\n\n")
+        show_status("Fehler: Keine Punkte im gewählten Höhenbereich gefunden\n\n")
 
-    show_status("Gespeichert in:\n")
-    show_status(output_dir + "\n\n")
-    show_status("Dateien:\n")
-    show_status("transform.yaml\n")
-    show_status("top_down_grid.npz\n\n")
+    show_status("Transformation und Grid gespeichert in: " + output_dir + "\n")
+    if output_dir_exists:
+        show_status("Hinweis: Vorhandener Ausgabeordner wurde überschrieben\n")
+    show_status("\tDateien:\n")
+    show_status("\t\ttransform.yaml\n")
+    show_status("\t\ttop_down_grid.npz\n\n")
 
     show_status("SuperSplat Transformationswerte (Y-up):\n")
-    show_status("Hinweis: Unser Sim-KS nutzt Z als Hoehe. SuperSplat nutzt Y als Hoehe.\n")
-    show_status("Daher wurden die Achsen fuer diese Werte umgerechnet.\n\n")
-    show_status("Position:\n")
+    show_status("\tHinweis: Unser Sim-KS nutzt Z als Höhe. SuperSplat nutzt Y als Höhe. Daher wurden die Achsen für diese Werte umgerechnet.\n")
     show_status(
-        "X: " + format(supersplat_position[0], ".4f")
+        "\tOptionale Kontrolle in SuperSplat (https://superspl.at/editor): Nach Importieren der Splat-Datei und Eingabe der folgenden\n"
+        + "\tWerte im Feld 'TRANSFORMATION' sollte das Grid horizontal auf dem Boden liegen und der Ursprung korrekt positioniert sein.\n\n"
+    )
+    show_status(
+        "\t\tPosition:\tX: " + format(supersplat_position[0], ".4f")
         + "\tY: " + format(supersplat_position[1], ".4f")
         + "\tZ: " + format(supersplat_position[2], ".4f")
         + "\n\n"
     )
-    show_status("Rotation:\n")
     show_status(
-        "X: " + format(supersplat_rotation_deg[0], ".2f") + " deg"
-        + "\tY: " + format(supersplat_rotation_deg[1], ".2f") + " deg"
-        + "\tZ: " + format(supersplat_rotation_deg[2], ".2f") + " deg"
+        "\t\tRotation:\tX: " + format(supersplat_rotation_deg[0], ".2f")
+        + "\tY: " + format(supersplat_rotation_deg[1], ".2f")
+        + "\tZ: " + format(supersplat_rotation_deg[2], ".2f")
         + "\n\n"
     )
-    show_status("Skalierung: 1\n\n")
-    show_status("Kontrolle in SuperSplat: Nach Eingabe dieser Werte sollte die Bodenebene horizontal auf dem Grid liegen.\n\n")
+    show_status("\t\tSkalierung: 1\n\n")
 
+    show_status(50 * "-" + "\n\n")
+    show_status("Transformation von Splat- zu Simulations-Koordinatensystem: \n\n")
     show_status("T_splat_to_sim:\n")
     show_status(final_transform.format_matrix(T_splat_to_sim))
-    show_status("\n\nT_sim_to_splat:\n")
+
+    show_status("\n\nTransformation von Simulations- zu Splat-Koordinatensystem: \n\n")
+    show_status("T_sim_to_splat:\n")
     show_status(final_transform.format_matrix(T_sim_to_splat))
-    show_status("\n")
+    show_status("\n\n")
+
+    show_status("Klappe Schritt 1 zu und fahre mit Schritt 2A fort")
 
     set_tab_done("step1_tab_1d", "1D: Transformation")
 
@@ -553,7 +568,7 @@ def select_splat_output_folder():
 
     # selection for splat output folder
     selected_folder = filedialog.askdirectory(
-        title="Splat-Ordner auswaehlen",
+        title="Splat-Ordner auswählen",
         initialdir=initial_dir,
     )
     root.destroy()
@@ -573,14 +588,35 @@ def select_splat_output_folder():
     else:
         step3_odom_data_path = None
 
-    # grid file from step 1D
+    # files from step 1D
     grid_file_path = os.path.join(selected_folder, "top_down_grid.npz")
+    transform_yaml_path = os.path.join(selected_folder, "transform.yaml")
+    transform_status = "transform.yaml gefunden"
+    if not os.path.isfile(transform_yaml_path):
+        transform_status = "transform.yaml nicht gefunden"
 
     if not os.path.isfile(grid_file_path):
-        set_step2a_status("top_down_grid.npz nicht gefunden")
+        set_step2a_status("top_down_grid.npz nicht gefunden\n" + transform_status)
         return
 
-    set_step2a_status("top_down_grid.npz gefunden")
+    set_step2a_status("top_down_grid.npz gefunden\n" + transform_status)
+
+    if os.path.isfile(os.path.join(selected_folder, "trajectory.csv")):
+        set_tab_done("step2_tab_2a", "2A: Trajektorie")
+
+    if os.path.isfile(os.path.join(selected_folder, "camera_poses_sim.csv")):
+        set_tab_done("step2_tab_2b", "2B: Kameraposen")
+
+    if os.path.isfile(os.path.join(selected_folder, "supersplat_camera_poses", "images.txt")):
+        set_tab_done("step2_tab_2c", "2C: SuperSplat Export")
+
+    image_output_dir = os.path.join(odom_data_path, STEP3_IMAGES_FOLDER_NAME)
+    poses_output_file = os.path.join(odom_data_path, STEP3_POSES_FILE_NAME)
+    if os.path.isdir(image_output_dir) and os.path.isfile(poses_output_file):
+        set_tab_done("step3_tab_3a", "3A: Daten vorbereiten")
+
+    if os.path.isfile(os.path.join(selected_folder, STEP3_ODOM_OUTPUT_FOLDER_NAME, "vo_output.csv")):
+        set_tab_done("step3_tab_3b", "3B: Odometrie ausführen")
 
 
 def load_top_down_grid(grid_file_path):
@@ -617,6 +653,7 @@ def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
     import matplotlib
     matplotlib.use("TkAgg", force=True)
     import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
 
     # load map and scale values from the selected splat folder
     occupancy_grid, cell_size, origin_xy = load_top_down_grid(grid_file_path)
@@ -646,6 +683,9 @@ def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
         origin="lower",
         extent=[x_min, x_max, y_min, y_max],
         interpolation="nearest",
+        cmap=ListedColormap(["white", "black"]),
+        vmin=0,
+        vmax=1,
     )
     ax.set_xlabel("x im Sim-KS")
     ax.set_ylabel("y im Sim-KS")
@@ -708,7 +748,7 @@ def start_trajectory_drawing():
     selected_folder = dpg.get_value("splat_output_folder_input").strip()
 
     if selected_folder == "":
-        set_step2a_status("Erst Ordner auswaehlen")
+        set_step2a_status("Erst einen Splat-Ordner auswählen")
         return
 
     selected_folder = os.path.normpath(selected_folder)
@@ -740,6 +780,7 @@ def start_trajectory_drawing():
         + "\n"
         + str(point_count)
         + " Wegpunkte"
+        + "\n\nFahre mit Schritt 2B fort"
     )
     set_tab_done("step2_tab_2a", "2A: Trajektorie")
 
@@ -757,13 +798,13 @@ def generate_camera_poses():
     step2_camera_poses = None
 
     if step2_splat_output_dir is None:
-        set_step2b_status("Erst in 2A einen Splat-Ausgabeordner auswaehlen")
+        set_step2b_status("Erst einen Splat-Ordner unter 2A auswählen")
         return
 
     try:
         camera_height = float(dpg.get_value("camera_height_input"))
     except (TypeError, ValueError):
-        set_step2b_status("Ungueltige Kamerahoehe")
+        set_step2b_status("Ungültige Kamerahöhe")
         return
 
     try:
@@ -771,19 +812,19 @@ def generate_camera_poses():
         lookahead_steps = int(dpg.get_value("lookahead_steps_input"))
         smoothing_rounds = int(dpg.get_value("smoothing_rounds_input"))
     except (TypeError, ValueError):
-        set_step2b_status("Ungueltige 2B-Einstellung")
+        set_step2b_status("Ungültige 2B-Einstellung")
         return
 
     if pose_spacing <= 0:
-        set_step2b_status("Pose-Abstand muss groesser 0 sein")
+        set_step2b_status("Posen-Abstand muss größer 0 sein")
         return
 
     if lookahead_steps < 1:
-        set_step2b_status("Lookahead-Schritte muessen mindestens 1 sein")
+        set_step2b_status("Lookahead-Schritte müssen mindestens 1 sein")
         return
 
     if smoothing_rounds < 0:
-        set_step2b_status("Glaettungsrunden duerfen nicht negativ sein")
+        set_step2b_status("Glättungsrunden dürfen nicht negativ sein")
         return
 
     trajectory_file_path = os.path.join(step2_splat_output_dir, "trajectory.csv")
@@ -827,18 +868,19 @@ def generate_camera_poses():
         + "Datei: "
         + camera_poses_file_path
         + "\n"
-        + "Pose-Abstand: "
+        + "Posen-Abstand: "
         + format(pose_spacing, ".2f")
         + "\n"
-        + "Kamerahoehe: "
+        + "Kamerahöhe: "
         + format(camera_height, ".2f")
         + "\n"
         + "Lookahead-Schritte: "
         + str(lookahead_steps)
         + "\n"
-        + "Glaettung: "
+        + "Glättung: "
         + str(smoothing_rounds)
         + " Runden"
+        + "\n\nFahre mit Schritt 2C fort"
     )
     set_tab_done("step2_tab_2b", "2B: Kameraposen")
 
@@ -856,7 +898,7 @@ def export_supersplat_images_txt():
     step2_images_txt_path = None
 
     if step2_splat_output_dir is None:
-        set_step2c_status("Erst Splat-Ausgabeordner unter 2A auswaehlen")
+        set_step2c_status("Erst einen Splat-Ordner unter 2A auswählen")
         return
 
     selected_folder = step2_splat_output_dir
@@ -872,75 +914,81 @@ def export_supersplat_images_txt():
         set_step2c_status("transform.yaml nicht gefunden")
         return
 
-    camera_poses = supersplat_export.load_camera_poses_csv(camera_poses_file_path)
+    set_step2c_status("images.txt wird erzeugt...")
 
-    if len(camera_poses) == 0:
-        set_step2c_status("Keine Kameraposen gefunden")
+    try:
+        camera_poses = supersplat_export.load_camera_poses_csv(camera_poses_file_path)
+
+        if len(camera_poses) == 0:
+            set_step2c_status("Keine Kameraposen gefunden")
+            return
+
+        # fixed output folder for SuperSplat poses
+        output_folder = os.path.join(selected_folder, "supersplat_camera_poses")
+        os.makedirs(output_folder, exist_ok=True)
+
+        images_txt_path = os.path.join(output_folder, "images.txt")
+
+        # folder for the rendered SuperSplat video
+        video_folder = os.path.join(selected_folder, "supersplat_video")
+        os.makedirs(video_folder, exist_ok=True)
+
+        # write images.txt
+        supersplat_export.write_images_txt(camera_poses, images_txt_path)
+
+        # read transform values for instructions
+        supersplat_position, supersplat_rotation_deg = supersplat_export.load_supersplat_values_from_transform_yaml(transform_yaml_path)
+    except Exception as error:
+        set_step2c_status("Fehler beim Erzeugen der images.txt:\n" + str(error))
         return
-
-    # fixed output folder for SuperSplat poses
-    output_folder = os.path.join(selected_folder, "supersplat_camera_poses")
-    os.makedirs(output_folder, exist_ok=True)
-
-    images_txt_path = os.path.join(output_folder, "images.txt")
-
-    # folder for the rendered SuperSplat video
-    video_folder = os.path.join(selected_folder, "supersplat_video")
-    os.makedirs(video_folder, exist_ok=True)
-
-    # write images.txt
-    supersplat_export.write_images_txt(camera_poses, images_txt_path)
-
-    # read transform values for instructions
-    supersplat_position, supersplat_rotation_deg = supersplat_export.load_supersplat_values_from_transform_yaml(transform_yaml_path)
 
     step2_images_txt_path = images_txt_path
 
-    position_text = "Transformationswerte bitte aus transform.yaml uebernehmen:\n" + transform_yaml_path + "\n\n"
+    position_text = "Transformationswerte bitte aus transform.yaml übernehmen:\n" + transform_yaml_path + "\n\n"
     rotation_text = ""
 
     if supersplat_position is not None and supersplat_rotation_deg is not None:
         position_text = (
-            "Position:\n"
-            + "X: " + format(supersplat_position[0], ".4f")
+            "\tPosition:\t"
+            + "\tX: " + format(supersplat_position[0], ".4f")
             + "\tY: " + format(supersplat_position[1], ".4f")
             + "\tZ: " + format(supersplat_position[2], ".4f")
             + "\n\n"
         )
         rotation_text = (
-            "Rotation:\n"
-            + "X: " + format(supersplat_rotation_deg[0], ".2f") + " deg"
-            + "\tY: " + format(supersplat_rotation_deg[1], ".2f") + " deg"
-            + "\tZ: " + format(supersplat_rotation_deg[2], ".2f") + " deg"
+            "\tRotation:\t"
+            + "\tX: " + format(supersplat_rotation_deg[0], ".2f")
+            + "\tY: " + format(supersplat_rotation_deg[1], ".2f")
+            + "\tZ: " + format(supersplat_rotation_deg[2], ".2f")
             + "\n\n"
         )
 
     set_step2c_status(
-        "images.txt erzeugt:\n\n"
+        "images.txt erzeugt:\n"
         + images_txt_path
         + "\n\n"
         + "\n\n"
-        + "Naechste Schritte in SuperSplat:\n\n"
-        + "1. SuperSplat Editor oeffnen:\n"
+        + "Nächste Schritte in SuperSplat:\n\n"
+        + "1. SuperSplat Editor öffnen:\n"
         + "   https://superspl.at/editor\n\n"
-        + "2. Originale Splat-Datei durch Drag & Drop laden.\n\n"
+        + "2. Zugehörige Splat-Datei (.ply) durch Drag & Drop laden.\n\n"
         + "3. Im Bereich Transformation diese Werte eintragen:\n\n"
         + position_text
         + rotation_text
-        + "Skalierung: 1\n\n"
-        + "4. Kameraposen über 'Datei' -> 'Importieren...' durch folgende Datei importieren:\n\n"
+        + "\tSkalierung: 1\n\n"
+        + "4. Kameraposen über 'Datei' -> 'Importieren...' durch folgende Datei importieren:\n\n\t"
         + images_txt_path
         + "\n\n"
-        + "Dadurch werden die Kameraposen als Frames in die Zeitleiste eingefuegt (ggf. Zeitleiste ganz unten links durch Klick auf 'ZEITLEISTE' aufklappen).\n\n"
-        + "5. Gesamtzahl der Frames unten rechts erhöhen auf:"
+        + "\tDadurch werden die Kameraposen als Frames in die Zeitleiste eingefügt.\n\tDie Zeitleiste ggf. ganz unten links durch Klick auf 'ZEITLEISTE' aufklappen.\n\n"
+        + "5. Gesamtzahl der Frames unten rechts erhöhen auf: "
         + str(len(camera_poses))
         + "\n\n"
-        + "Eine Preview kann durch klick auf den Play-Button in der Zeitleiste gestartet werden.\n\n"
-        + "6. Video rendern ueber 'Rendern' -> 'Video...'. Auflösung optional auf 1280x720 stellen (schnelleres Rendern), Rest beibehalten.\n\n"
-        + "7. Das Video in den erzeugten Video-Ordner exportieren:\n\n"
+        + "\tEine Preview kann durch klick auf den Play-Button in der Zeitleiste gestartet werden.\n\n"
+        + "6. Video rendern über 'Rendern' -> 'Video...'. Auflösung optional auf 1280x720 stellen (schnelleres Rendern), Rest beibehalten.\n\n"
+        + "7. Das Video in den erzeugten Video-Ordner exportieren:\n\n\t"
         + video_folder
-        + "\n\n"
-        + "Danach mit Schritt 3A fortfahren."
+        + "\n\n\n"
+        + "Warte bis das Rendering abgeschlossen ist und klappe anschließend Schritt 2 zu und fahre mit Schritt 3A fort"
     )
     set_tab_done("step2_tab_2c", "2C: SuperSplat Export")
 
@@ -961,7 +1009,7 @@ def select_step3a_splat_output_folder():
         initial_dir = "."
 
     selected_folder = filedialog.askdirectory(
-        title="Splat-Ordner auswaehlen",
+        title="Splat-Ordner auswählen",
         initialdir=initial_dir,
     )
     root.destroy()
@@ -1001,7 +1049,10 @@ def select_step3a_splat_output_folder():
         )
         set_tab_done("step3_tab_3a", "3A: Daten vorbereiten")
     else:
-        set_step3a_status("Splat-Ausgabeordner gesetzt.\n\nNoch keine vorbereiteten Daten gefunden.")
+        set_step3a_status("Splat-Ordner gesetzt.\n\nNoch keine vorbereiteten Daten gefunden.")
+
+    if os.path.isfile(os.path.join(selected_folder, STEP3_ODOM_OUTPUT_FOLDER_NAME, "vo_output.csv")):
+        set_tab_done("step3_tab_3b", "3B: Odometrie ausführen")
 
 
 def prepare_visual_odometry_data():
@@ -1014,7 +1065,7 @@ def prepare_visual_odometry_data():
         dpg.set_value("3a_splat_output_folder_input", selected_folder)
 
     if selected_folder == "":
-        set_step3a_status("Erst Splat-Ausgabeordner auswaehlen")
+        set_step3a_status("Erst einen Splat-Ordner auswählen")
         return
 
     selected_folder = os.path.normpath(selected_folder)
@@ -1060,6 +1111,7 @@ def prepare_visual_odometry_data():
         + "\n"
         + "Kameraposen geladen: "
         + str(num_poses)
+        + "\n\nFahre mit Schritt 3B fort"
     )
     set_tab_done("step3_tab_3a", "3A: Daten vorbereiten")
 
@@ -1076,7 +1128,7 @@ def run_visual_odometry():
             odom_data_path = os.path.join(os.path.normpath(selected_folder), STEP3_OUTPUT_FOLDER_NAME)
 
     if odom_data_path is None or not os.path.isdir(odom_data_path):
-        dpg.set_value("3b_status_text", "Erst Daten in 3A vorbereiten oder Splat-Ordner auswaehlen")
+        dpg.set_value("3b_status_text", "Erst einen Splat-Ordner unter 3A auswählen (und Daten vorbereiten)")
         return
 
     image_output_dir = os.path.abspath(os.path.join(odom_data_path, STEP3_IMAGES_FOLDER_NAME))
@@ -1112,7 +1164,11 @@ def run_visual_odometry():
 
     def wait_for_odometry():
         process.wait()
-        dpg.set_value("3b_status_text", "Odometry Daten gespeichert unter:\n" + output_file)
+        if os.path.isfile(output_file):
+            dpg.set_value("3b_status_text", "Odometry Daten gespeichert unter:\n" + output_file + "\n\nFahre mit Schritt 3C fort")
+            set_tab_done("step3_tab_3b", "3B: Odometrie ausführen")
+        else:
+            dpg.set_value("3b_status_text", "Odometrie beendet, aber vo_output.csv wurde nicht gefunden")
 
     threading.Thread(target=wait_for_odometry, daemon=True).start()
 
@@ -1135,7 +1191,7 @@ def show_evaluation_plot():
         selected_folder = step2_splat_output_dir
 
     if selected_folder == "":
-        set_step3c_status("Erst Splat-Ausgabeordner auswaehlen")
+        set_step3c_status("Erst einen Splat-Ordner unter 3A auswählen")
         return
 
     csv_file = os.path.join(
@@ -1197,12 +1253,12 @@ def run_plane_search():
 
     dpg.configure_item("floor_candidate_combo", items=candidate_names)
 
+    # step 1A finished -> mark tab as done before drawing the 1B preview
+    set_tab_done("step1_tab_1a", "1A: Ebenen finden")
+
     if len(candidate_names) > 0:
         dpg.set_value("floor_candidate_combo", candidate_names[0])
         draw_floor_candidate()
-
-    # step 1A finished -> mark tab as done
-    set_tab_done("step1_tab_1a", "1A: Ebenen finden")
 
 
 def validate_floor_plane():
@@ -1245,20 +1301,20 @@ def validate_floor_plane():
     }
     reset_floor_alignment_state()
 
-    show_status("1B: Bodenebene ausgewaehlt\n")
+    show_status("Bodenebene und Höhenbereich ausgewählt\n")
     show_status("\tKandidat: " + str(candidate_number) + "\n")
-    show_status("\tHoehenbereich: " + format(min_height, ".2f") + " bis " + format(max_height, ".2f") + "\n")
+    show_status("\tHöhenbereich: " + format(min_height, ".2f") + " bis " + format(max_height, ".2f") + "\n")
     show_status("\tOberseite wurde automatisch bestimmt\n")
-    show_status("\tPunkte oberhalb: " + format(view_data["orientation_info"]["positive_ratio"] * 100, ".1f") + " %\n")
-    show_status("\tBoden-Transformation fuer 1C vorbereitet\n")
+    show_status("\tPunkte oberhalb: " + format(view_data["orientation_info"]["positive_ratio"] * 100, ".1f") + " %\n\n")
+    show_status("Fahre mit Schritt 1C fort")
 
-    set_tab_done("step1_tab_1b", "1B: Boden waehlen")
+    set_tab_done("step1_tab_1b", "1B: Boden wählen")
 
 
 def build_step1_area():
     
     # main steps are vertical collapsing headers
-    with dpg.collapsing_header(label="Schritt 1: Koordinatentransformation generieren", default_open=False):     
+    with dpg.collapsing_header(label="Schritt 1: Bodenebene bestimmen und Koordinatentransformation erzeugen", default_open=False):     
         
         with dpg.tab_bar(tag="step1_tab_bar"):
         # substeps are tabs inside the main step
@@ -1266,9 +1322,11 @@ def build_step1_area():
             # section 1A
             with dpg.tab(label=STEP_OPEN + " 1A: Ebenen finden", tag="step1_tab_1a"):
 
-                dpg.add_text("Splatdatei auswaehlen und Boden-Ebenenkandidaten suchen")
+                dpg.add_text("Splatdatei auswählen und Boden-Ebenenkandidaten suchen", color=HEADING_COLOR)
+                dpg.add_text("Output: Ebenenkandidaten mit Ebenenmodell und Inlier-Punkten für 1B", color=OUTPUT_COLOR)
                 dpg.add_text(
-                    "Waehle eine Splatdatei aus und starte die Suche nach ebenen Flaechen, die als Boden in Frage kommen."
+                    "Wähle eine 3D Gaussian-Splatdatei vom Format '.ply' aus und starte die Suche nach ebenen Flächen, die als Bodenebene in Frage kommen.",
+                    color=INSTRUCTION_COLOR,
                 )
 
                 with dpg.group(horizontal=True):
@@ -1277,31 +1335,33 @@ def build_step1_area():
 
                 dpg.add_button(label="Ebenenkandidaten suchen", callback=run_plane_search)
                 dpg.add_separator()
-                dpg.add_input_text(tag="1a_output_text", default_value="", multiline=True, readonly=True, width=970, height=120)
+                dpg.add_input_text(tag="1a_output_text", default_value="", multiline=True, readonly=True, width=970, height=300)
 
             # section 1B
-            with dpg.tab(label=STEP_OPEN + " 1B: Boden waehlen", tag="step1_tab_1b"):
-                dpg.add_text("Ebenenkandidaten anzeigen und Bodenebene validieren")
-                dpg.add_text(
-                    "Waehle den passendsten Kandidaten aus und stelle den Hoehenfilter so ein,\ndass die Raumstruktur und Hindernisse in der Draufsicht moeglichst klar erkennbar sind."
-                )
+            with dpg.tab(label=STEP_OPEN + " 1B: Boden wählen", tag="step1_tab_1b"):
+                dpg.add_text("Ebenenkandidaten anzeigen und Bodenebene validieren", color=HEADING_COLOR)
+                dpg.add_text("Output: validierte Bodenebene, Oberseitenrichtung und Höhenfilter für 1C", color=OUTPUT_COLOR)
+                dpg.add_text("Wähle den passendsten Kandidaten, der die tatsätzliche Bodenebene darstellt, aus.\nDie Anpassung des Höhenfilters kann bei der Identifizierung hilfreich sein.", color=INSTRUCTION_COLOR,)
+                
                 dpg.add_combo(label="Kandidat", tag="floor_candidate_combo", items=[], width=200, callback=draw_floor_candidate)
                 dpg.add_text("", tag="floor_orientation_status")
 
-                dpg.add_slider_float(label="Hoehenfilter: Untergrenze ueber Ebene", tag="floor_min_height_slider", default_value=0.0, min_value=0.0, max_value=3.0, width=420, callback=draw_floor_candidate)
-                dpg.add_slider_float(label="Hoehenfilter: Obergrenze ueber Ebene", tag="floor_max_height_slider", default_value=3.0, min_value=0.0, max_value=3.0, width=420, callback=draw_floor_candidate)
-                dpg.add_text("Sichtbarer Hoehenbereich: 0.00 bis 3.00 ueber der Ebene", tag="floor_height_status")
+                dpg.add_text("Stelle den Höhenfilter so ein, dass die Raumstruktur und Hindernisse in der Draufsicht möglichst klar erkennbar sind,\ndarüber wird später eine Occupancy Map erstellt.", color=INSTRUCTION_COLOR,)
+                dpg.add_slider_float(label="Höhenfilter: Untergrenze über Bodenebene", tag="floor_min_height_slider", default_value=0.0, min_value=0.0, max_value=3.0, width=420, callback=draw_floor_candidate)
+                dpg.add_slider_float(label="Höhenfilter: Obergrenze über Bodenebene", tag="floor_max_height_slider", default_value=3.0, min_value=0.0, max_value=3.0, width=420, callback=draw_floor_candidate)
+                dpg.add_text("Sichtbarer Höhenbereich: 0.00 bis 3.00 über der Bodenebene", tag="floor_height_status")
 
                 dpg.add_drawlist(width=700, height=420, tag="floor_candidate_preview")
 
-                dpg.add_button(label="Bodenebene validieren", callback=validate_floor_plane)
+                dpg.add_button(label="Bodenebene und Occupancy Map validieren", callback=validate_floor_plane)
                 dpg.add_separator()
-                dpg.add_input_text(tag="1b_output_text", default_value="", multiline=True, readonly=True, width=970, height=120)
+                dpg.add_input_text(tag="1b_output_text", default_value="", multiline=True, readonly=True, width=970, height=150)
 
             # section 1C
             with dpg.tab(label=STEP_OPEN + " 1C: Ausrichten", tag="step1_tab_1c"):
-                dpg.add_text("Raumrotation und XY-Ursprung manuell anpassen")
-                dpg.add_text("Richte die validierte Draufsicht an den X/Y-Achsen aus und lege den Ursprung fest.")
+                dpg.add_text("Raumrotation und XY-Ursprung manuell anpassen", color=HEADING_COLOR)
+                dpg.add_text("Output: manuelle Raumrotation und XY-Ursprung für die Gesamttransformation in 1D", color=OUTPUT_COLOR)
+                dpg.add_text("Richte die validierte Draufsicht durch Rotation, an den X/Y-Achsen aus\nund lege den Ursprung durch Translation grob in die linke untere Raumecke.", color=INSTRUCTION_COLOR)
                 dpg.add_text("Erst Bodenebene in 1B validieren", tag="1c_alignment_status")
 
                 dpg.add_slider_float(label="Rotation um Z", tag="alignment_yaw_slider", default_value=0.0, min_value=-180.0, max_value=180.0, width=420, callback=draw_floor_alignment)
@@ -1310,18 +1370,21 @@ def build_step1_area():
 
                 dpg.add_drawlist(width=700, height=420, tag="floor_alignment_preview")
 
-                dpg.add_button(label="Ausrichtung uebernehmen", callback=accept_floor_alignment)
+                dpg.add_button(label="Ausrichtung übernehmen", callback=accept_floor_alignment)
                 dpg.add_separator()
                 dpg.add_input_text(tag="1c_output_text", default_value="", multiline=True, readonly=True, width=970, height=120)
 
             # section 1D
             with dpg.tab(label=STEP_OPEN + " 1D: Transformation", tag="step1_tab_1d"):
-                dpg.add_text("Gesamttransformation pruefen und speichern")
-                dpg.add_text("Berechnet die Gesamttransformation aus validierter Bodenebene und manueller Ausrichtung.")
-                dpg.add_button(label="Transformation berechnen", callback=calculate_final_transform)
-                dpg.add_button(label="Top-Down Grid anzeigen", callback=show_saved_top_down_grid)
+                dpg.add_text("Transformation zwischen Simulations- und Splat-Koordinatensystem berechnen und speichern", color=HEADING_COLOR)
+                dpg.add_text("Output:", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Transformationen: transform.yaml", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Occupancy Grid: top_down_grid.npz", color=OUTPUT_COLOR)
+                dpg.add_text("Lass die Transformationen berechnen und überprüfe das generierte Occupancy Grid.", color=INSTRUCTION_COLOR)
+                dpg.add_button(label="Transformation und Grid generieren", callback=calculate_final_transform)
+                dpg.add_button(label="Occupancy Grid anzeigen", callback=show_saved_top_down_grid)
                 dpg.add_separator()
-                dpg.add_input_text(tag="1d_output_text", default_value="", multiline=True, readonly=True, width=970, height=260)
+                dpg.add_input_text(tag="1d_output_text", default_value="", multiline=True, readonly=True, width=970, height=560)
 
 
 def build_step2_area():
@@ -1330,85 +1393,112 @@ def build_step2_area():
         with dpg.tab_bar(tag="step2_tab_bar"):
 
             # section 2A
-            with dpg.tab(label="2A: Trajektorie", tag="step2_tab_2a"):
-                dpg.add_text("Trajektorie festlegen")
+            with dpg.tab(label=STEP_OPEN + " 2A: Trajektorie", tag="step2_tab_2a"):
+                dpg.add_text("Trajektorie festlegen", color=HEADING_COLOR)
+                dpg.add_text("Output: manuell gezeichnete Wegpunkte in trajectory.csv", color=OUTPUT_COLOR)
 
-                dpg.add_text("Wähle den Ordner aus `splats/...`, der zu deiner Splat-Datei gehört. Daraus wird die gespeicherte Top-Down-Karte und später Transformation geladen.")
+                dpg.add_text("Wähle den generierten Ordner aus `splats/...`, der zu deiner Splat-Datei gehört.\n", color=INSTRUCTION_COLOR)
+                dpg.add_text("Daraus werden Occupancy Grid und Transformation aus Schritt 1 geladen und weitere Daten abgelegt.")
 
                 with dpg.group(horizontal=True):
                     dpg.add_input_text(tag="splat_output_folder_input", width=650)
-                    dpg.add_button(label="Ordner auswaehlen", callback=select_splat_output_folder)
+                    dpg.add_button(label="Ordner auswählen", callback=select_splat_output_folder)
 
-                dpg.add_text("Hinweis: Die Trajektorie besteht aus geraden Linien zwischen den Wegpunkten.")
-                dpg.add_text("Fuer Kurven bitte mehrere Punkte eng hintereinander setzen.")
-                dpg.add_text("Reine Drehungen auf der Stelle oder Kurvenglättungen werden nicht automatisch erzeugt.")
-                dpg.add_text("Im Zeichenfenster setzt Rechtsklick einen Wegpunkt")
-                dpg.add_text("Mit Enter wird gespeichert, beim Schliessen wird verworfen.")
+                dpg.add_text("Hinweise:")
+                dpg.add_text("\t - Die Trajektorie besteht aus geraden Linien zwischen den Wegpunkten.")
+                dpg.add_text("\t - Für Kurven bitte mehrere Punkte eng hintereinander setzen. Kurvenglättungen werden nur in kleinem Umfang erzeugt.")
+                dpg.add_text("\t - Zu enge Kurven können bei nicht ausreichender Framezahl zu Problemen bei der Visuellen Odometrie führen.")
+                dpg.add_text("\t - Im Zeichenfenster setzt Rechtsklick einen Wegpunkt")
+                dpg.add_text("\t - Mit Enter wird gespeichert, beim Schließen wird verworfen.")
 
                 dpg.add_button(label="Trajektorie einzeichnen", callback=start_trajectory_drawing)
                 dpg.add_separator()
                 dpg.add_input_text(tag="2a_output_text", default_value="", multiline=True, readonly=True, width=970, height=100)
 
             # section 2B
-            with dpg.tab(label="2B: Kameraposen", tag="step2_tab_2b"):
-                dpg.add_text("Kameraposen generieren")
-                dpg.add_text("Kamerahoehe ueber Boden")
+            with dpg.tab(label=STEP_OPEN + " 2B: Kameraposen", tag="step2_tab_2b"):
+                dpg.add_text("Kameraposen generieren", color=HEADING_COLOR)
+                dpg.add_text("Output: Kameraposen im Sim-KS in camera_poses_sim.csv", color=OUTPUT_COLOR)
+                dpg.add_text("Passe optional die Parameter an und generiere die Kameraposen aus der Trajektorie.", color=INSTRUCTION_COLOR)
+                dpg.add_text("Kamerahöhe über Boden")
                 dpg.add_input_float(tag="camera_height_input", default_value=0.4, width=160)
-                dpg.add_text("Pose-Abstand")
+                dpg.add_text("Posen-Abstand - Abstand der Kameraposen entlang der Trajektorie (je kleiner, desto mehr Posen)")
                 dpg.add_input_float(tag="pose_spacing_input", default_value=camera_pose_generator.POSE_SPACING, width=160)
-                dpg.add_text("Lookahead-Schritte")
+                dpg.add_text("Lookahead-Schritte - Anzahl der Schritte, die für die Berechnung der Blickrichtung vorausgeschaut wird (min. 1)")
                 dpg.add_input_int(tag="lookahead_steps_input", default_value=camera_pose_generator.LOOKAHEAD_STEPS, width=160)
-                dpg.add_text("Glaettungsrunden")
+                dpg.add_text("Glättungs-Durchläufe - Anzahl der Durchläufe, die harte Ecken in der Trajektorie glätten (0 = keine Glättung)")
                 dpg.add_input_int(tag="smoothing_rounds_input", default_value=camera_pose_generator.SMOOTHING_ROUNDS, width=160)
                 dpg.add_button(label="Kameraposen generieren", callback=generate_camera_poses)
                 dpg.add_separator()
-                dpg.add_input_text(tag="2b_output_text", default_value="", multiline=True, readonly=True, width=970, height=140)
+                dpg.add_input_text(tag="2b_output_text", default_value="", multiline=True, readonly=True, width=970, height=160)
 
             # section 2C
-            with dpg.tab(label="2C: SuperSplat Export", tag="step2_tab_2c"):
-                dpg.add_text("SuperSplat images.txt Export")
-                dpg.add_text("Erzeugt eine images.txt aus den Kameraposen.")
-                dpg.add_text("Diese Datei kann danach in SuperSplat importiert werden.")
+            with dpg.tab(label=STEP_OPEN + " 2C: SuperSplat Export", tag="step2_tab_2c"):
+                dpg.add_text("Datei generieren um Kameraposen in SuperSplat Editor zu importieren und Video zu rendern", color=HEADING_COLOR)
+                dpg.add_text("Output:", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Kameraposen im COLMAP-Format: supersplat_camera_poses\\images.txt", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Danach manuell über Rendering in SuperSplat: Videodatei im Ablage-Ordner 'supersplat_video'", color=OUTPUT_COLOR)
+                dpg.add_text("Generiere die images.txt Datei und folge den Anweisungen, um die Kameraposen in SuperSplat zu importieren und ein Video zu rendern.", color=INSTRUCTION_COLOR)
 
                 dpg.add_button(label="images.txt erzeugen", callback=export_supersplat_images_txt)
                 dpg.add_separator()
-                dpg.add_input_text(tag="2c_output_text", default_value="", multiline=True, readonly=True, width=970, height=300)
+                dpg.add_input_text(tag="2c_output_text", default_value="", multiline=True, readonly=True, width=970, height=560)
 
 
 def build_step3_area():
     
-    with dpg.collapsing_header(label="Schritt 3: Lokalisierung und Evaluation"):
+    with dpg.collapsing_header(label="Schritt 3: Visuelle Lokalisierung und Evaluation"):
         with dpg.tab_bar(tag="step3_tab_bar"):
             
             # section 3A
-            with dpg.tab(label="3A: Daten vorbereiten", tag="step3_tab_3a"):
-                dpg.add_text("Daten für visuelle Odometrie vorbereiten")
-                dpg.add_text("Wähle (falls nicht bereits hinterlegt) den Ordner aus `splats/...`, der zu deiner Splat-Datei gehört.\nDaraus wird das exportierte Video und die generierten Kameraposen verwendet.")
+            with dpg.tab(label=STEP_OPEN + " 3A: Daten vorbereiten", tag="step3_tab_3a"):
+                dpg.add_text("Daten für visuelle Odometrie vorbereiten", color=HEADING_COLOR)
+                dpg.add_text("Output:", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Einzelbilder: odometry_input\\images\\*.png", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Posen für Odometrie im KITTI-Odometry-Format: odometry_input\\poses.txt", color=OUTPUT_COLOR)
+                dpg.add_text("Wähle (falls nicht bereits hinterlegt) den Ordner aus `splats/...`, der zu deiner Splat-Datei gehört.\n", color=INSTRUCTION_COLOR)
+                dpg.add_text("Daraus werden gerendertes Video und Kameraposen aus Schritt 2 geladen und weitere Daten abgelegt.")
                 default_splat_folder = ""
                 if step2_splat_output_dir is not None:
                     default_splat_folder = step2_splat_output_dir
 
                 with dpg.group(horizontal=True):
                     dpg.add_input_text(tag="3a_splat_output_folder_input", default_value=default_splat_folder, width=650)
-                    dpg.add_button(label="Ordner auswaehlen", callback=select_step3a_splat_output_folder)
+                    dpg.add_button(label="Ordner auswählen", callback=select_step3a_splat_output_folder)
 
+                dpg.add_text("Starte die Daten vorbereitung, um die Bilder zu vereinzeln und die Kameraposen in das benötigte Format zu bringen.", color=INSTRUCTION_COLOR)
                 dpg.add_button(label="Daten vorbereiten", callback=prepare_visual_odometry_data)
                 dpg.add_input_text(tag="3a_output_text", default_value="", multiline=True, readonly=True, width=970, height=220)
 
             # section 3B
-            with dpg.tab(label="3B: Odometrie ausführen", tag="step3_tab_3b"):
-                dpg.add_text("Odometrie ausführen")
+            with dpg.tab(label=STEP_OPEN + " 3B: Odometrie ausführen", tag="step3_tab_3b"):
+                dpg.add_text("Odometrie ausführen", color=HEADING_COLOR)
+                dpg.add_text("Output: Ausgabedaten der Visual Odometry odometry_output\\vo_output.csv", color=OUTPUT_COLOR)
+                dpg.add_text("Starte die visuelle Odometrie mit den vorbereiteten Daten. Das Skript läuft in einem separaten Prozess.", color=INSTRUCTION_COLOR)
+                dpg.add_text("Die Odometrie Basiert auf dem Repository 'Monocular-Video-Odometry' von Ali Shobeiri (siehe Readme)\nund nutzt Feature-Tracking, Essential-Matrix-Schätzung und RANSAC zur Bewegungsschätzung.")
+                dpg.add_text("Für die Auswertung wurde die Implementierung erweitert:\nPro Frame werden geschätzte Pose, Ground-Truth-Pose und zusätzliche Metriken in einer CSV-Datei gespeichert.")
                 dpg.add_button(label="Odometrie starten", callback=run_visual_odometry)
                 dpg.add_input_text(tag="3b_status_text", default_value="", multiline=True, readonly=True, width=970, height=80)
 
             # section 3C
-            with dpg.tab(label="3C: Evaluation", tag="step3_tab_3c"):
+            with dpg.tab(label=STEP_OPEN + " 3C: Evaluation", tag="step3_tab_3c"):
+                dpg.add_text("Evaluation anzeigen", color=HEADING_COLOR)
+                #dpg.add_text("Output: ", color=OUTPUT_COLOR)
+                dpg.add_text("Zeigt Ground-Truth und geschätzte Trajektorie auf der Occupancy Map.", color=INSTRUCTION_COLOR)
                 dpg.add_button(label="Evaluation anzeigen", callback=show_evaluation_plot)
                 dpg.add_input_text(tag="3c_status_text", default_value="", multiline=True, readonly=True, width=970, height=80)
 
 
 def main():
     dpg.create_context()
+
+    with dpg.theme() as button_theme:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, BUTTON_COLOR)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, BUTTON_HOVER_COLOR)
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, BUTTON_ACTIVE_COLOR)
+
+    dpg.bind_theme(button_theme)
 
     # Main DearPyGui window.
     with dpg.window(
@@ -1424,7 +1514,7 @@ def main():
         build_step2_area()
         build_step3_area()
 
-    dpg.create_viewport(title="Splat Localization Benchmark", width=1000, height=800)
+    dpg.create_viewport(title="Splat Localization Benchmark", width=1000, height=900)
     dpg.setup_dearpygui()
 
     dpg.set_primary_window("main_window", True)
