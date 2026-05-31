@@ -2,7 +2,7 @@
 
 ### Git-Repo inklusive Submodule clonen
 ```bash
-git clone --recurse-submodules https://github.com/marcoweber3/Monocular-Video-Odometery.git
+git clone --recurse-submodules https://github.com/marcoweber3/gaussian-splat-visual-localization.git
 ```
 
 
