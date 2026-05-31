@@ -3,6 +3,7 @@
 import csv
 
 import numpy as np
+import yaml
 
 
 def load_camera_poses_csv(file_path):
@@ -193,34 +194,15 @@ def write_images_txt(camera_poses, output_file):
             file.write(line + "\n\n")
 
 
-def load_supersplat_values_from_transform_yaml(file_path):
-    """Read SuperSplat values from transform.yaml."""
-
-    position = None
-    rotation = None
+def load_supersplat_values_from_splat_data(file_path):
+    """Read SuperSplat values from splat_data.yaml."""
 
     with open(file_path, "r", encoding="utf-8") as file:
-        for line in file:
-            stripped_line = line.strip()
+        splat_data = yaml.safe_load(file)
 
-            if stripped_line.startswith("position_xyz:"):
-                position = read_vector_from_yaml_line(stripped_line)
+    if splat_data is None:
+        splat_data = {}
 
-            if stripped_line.startswith("rotation_xyz_deg:"):
-                rotation = read_vector_from_yaml_line(stripped_line)
+    transform_data = splat_data.get("transforms", {}).get("supersplat_transform", {})
 
-    return position, rotation
-
-
-def read_vector_from_yaml_line(line):
-    """Read values like [1.0, 2.0, 3.0]."""
-
-    value_text = line.split(":", 1)[1].strip()
-    value_text = value_text.replace("[", "").replace("]", "")
-
-    values = []
-
-    for value in value_text.split(","):
-        values.append(float(value.strip()))
-
-    return values
+    return transform_data.get("position_xyz"), transform_data.get("rotation_xyz_deg")

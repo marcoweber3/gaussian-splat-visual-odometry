@@ -1,4 +1,4 @@
-name: splat-loc-sim-Env
+name: splat-loc-sim-env
 
 channels:
   - conda-forge
@@ -9,6 +9,24 @@ dependencies:
   - opencv
   - open3d
   - pip
+
+  # r / r markdown
+  - r-base
+  - r-rmarkdown
+  - r-knitr
+  - pandoc
+
+  # r packages
+  - r-dplyr
+  - r-ggplot2
+  - r-zoo
+  - r-tidyr
+
+  # pdf export
+  - tectonic
+
+  # python pip packages
   - pip:
-    - plyfile
-    - dearpygui
+      - plyfile
+      - dearpygui
+      - pyyaml

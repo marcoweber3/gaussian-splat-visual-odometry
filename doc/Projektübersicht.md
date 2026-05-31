@@ -3,9 +3,10 @@
 ## Projektübersicht
 
 Ziel ist es, aus einer 3D-Gaussian-Splat-Umgebung simulierte Kamerabilder aus sicht eines Roboters zu erzeugen.  
-Diese Bilddaten sollen anscließend genutzt werden, um visuelle Lokalisierungs- bzw. Odometrie-Algorithmen zu testen und mit der ursprünglichen simulierten Fahrtrajektorie zu vergleichen.
+Diese Bilddaten sollen anschließend genutzt werden, um visuelle Lokalisierungs- bzw. Odometrie-Algorithmen zu testen und mit der ursprünglichen simulierten Fahrtrajektorie zu vergleichen.
 
 Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes Umschreiben der Datei fehleranfällig wäre. Typische Splat-Dateien besitzen keine einfache globale Achsen- oder Ursprungseinstellung, daher müssten einzelne Splat-Parameter wie Mittelpunkt, Rotation und Skalierung korrekt angepasst werden. Statdessen wird eine Transformation zwischen Simulations- und Splat-Koordinatensystem berrechnet und gespeichert, mit der Trajektorien und Kameraposen entsprechend transformiert werden können.
+
 
 **Abkürzungsverzeichnis:**  
 - Spat-KS: Splat-Koordinatensystem
@@ -63,7 +64,7 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 
 - **1.6: Gesamttransformation zusammensetzen**  
   Bodenausrichtung, Rotation und XY-Ursprung werden zu einer Gesamttransformation kombiniert. Zusätzlich wird die inverse Transformation berechnet.  
-  **Output:** `splats/<Splat-Name>/transform.yaml` mit Gesamttransformation und inverser Transformation zwischen Splat-KS und Sim-KS; 1.6b: + Transformation für SuperSplatEditor
+  **Output:** `splats/<Splat-Name>/splat_data.yaml` mit Dateipfaden, Splat-Daten und Transformationen zwischen Splat-KS, Sim-KS und SuperSplat-KS
 
 - **1.6: Top-Down-Grid aus Sim-Koordinaten erzeugen**  
   Die Splat-Mittelpunkte werden mit der Gesamttransformation ins Sim-KS transformiert und innerhalb des gewählten Höhenbereichs als Occupancy Grid gespeichert.  
@@ -76,12 +77,12 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
 #### 2A: Trajektorie - Trajektorie festlegen
 - **2.1: Trajektorie auswählen**  
   - Trajektorie in Top-Down-View einzeichnen
-  **Output:** Wegpunkte der geplanten Trajektorie in `splats/<Splat-Name>/trajectory.csv`
+  **Output:** Wegpunkte der geplanten Trajektorie in `splats/<Splat-Name>/trajectory.csv`; Wegpunktanzahl in `splat_data.yaml`
 
 #### 2B: Kameraposen - Kameraposen generieren
 - **2.2: Kamerapositionen entlang der Trajektorie generieren**  
   **Parameter:** z-Höhe, Spacing, Lookahead-Schritte, Glättungs-Durchläufe
-  **Output:** `splats/<Splat-Name>/camera_poses_sim.csv` mit Kameraposen im Format x,y,z,yaw_deg im Sim-KS
+  **Output:** `splats/<Splat-Name>/camera_poses_sim.csv` mit Kameraposen im Format x,y,z,yaw_deg im Sim-KS; Posenanzahl und Parameter in `splat_data.yaml`
 
 #### 2C: SuperSplat-Export - Datei generieren um Kameraposen in SuperSplat Editor zu importieren und Video zu rendern
 - **2.3: SuperSplat-Export vorbereiten**
@@ -101,18 +102,24 @@ Der Gaussian Splat selbst soll erstmal unverändert bleiben, weil ein direktes U
   Visuelle Odometrie über OpenCV basierend auf: https://github.com/alishobeiri/Monocular-Video-Odometery/tree/master
   **Output:** `splats/<Splat-Name>/odometry_output/vo_output.csv` mit geschätzten und tatsächlichen Positionen uvm.
 
-#### 3C: Evaluation - Evaluation der Ausgeführten Odometrie
+#### 3C: Kompakt-Evaluation - Kurze Evaluation der ausgeführten Odometrie
 - **3.3: Geschätzte Trajektorie mit echter Trajektorie vergleichen**  
-  **Output:** Top-Down visualisierung zwischen Ursprünglicher Trajektorie und Schätzung durch Visual Odometry, keine Datei
+  **Output:** Top-Down visualisierung zwischen Ursprünglicher Trajektorie und Schätzung durch Visual Odometry; Kennzahlen in `splat_data.yaml`; Kompakt-Grafik in `splats/<Splat-Name>/short-evaluation/vo_short_eval.png`; Top-Down-Grafik in `splats/<Splat-Name>/short-evaluation/vo_top_down_eval.png`
+
+#### 3D: Ausführliche Evaluation - Detail- und Vergleichsevaluation vorbereiten
+- **3.4: Evaluationsdaten für Detail- oder Vergleichsauswertung speichern**  
+  `vo_output.csv`, `vo_top_down_eval.png` und `metadata.csv` können unter einem Trajektoriennamen in den zentralen Ordner `evaluation/<Trajektorienname>/` kopiert werden. Die Metadaten-CSV enthält u. a. originalen Splat-Dateinamen, generierten Splat-Ordner aus `project_folder`, Splat-Anzahl, Wegpunktanzahl, Kameraposenanzahl und Kameraposen-Parameter. Der verwendete Ordnername wird in `splat_data.yaml` gespeichert. Eine PDF-Detailanalyse kann in 3D auch direkt nach Programmstart gestartet werden, sofern dort bereits Trajektorienordner vorhanden sind.
 
 ---
 
-## Offene Fragen
+### Offene Fragen
 
 
 
-## ToDo's
+### ToDo's
 
-
-### Optionale ToDo's
-- Datenbasiertere Evaluation
+### Erweiterungen
+- Herausfiltern außenliegender, nicht relevanter Splatmittelpunkte
+- Unterschritt 1: Anpassung der Skalierung über Referenzmaß im Raum
+- Möglichkeit die in SuperSplat verwendete Field of View und Auflösung zu hinterlegen, zum Evaluieren des Einflusses auf die Odometry.
+- ...

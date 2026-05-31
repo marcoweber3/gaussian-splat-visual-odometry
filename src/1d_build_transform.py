@@ -1,6 +1,9 @@
 """Build and format the final step 1 transformation."""
 
+import os
+
 import numpy as np
+import yaml
 
 
 def build_final_transform(validated_floor_data, alignment_data):
@@ -114,72 +117,91 @@ def build_top_down_grid(points_sim, min_height, max_height, cell_size):
     return occupancy_grid, origin_xy, height_range, len(visible_points)
 
 
-def write_transform_yaml(
+def load_yaml_file(file_path):
+    """Load YAML data, or return an empty dict."""
+
+    if not os.path.isfile(file_path):
+        return {}
+
+    with open(file_path, "r", encoding="utf-8") as file:
+        data = yaml.safe_load(file)
+
+    if data is None:
+        data = {}
+
+    return data
+
+
+def save_yaml_file(file_path, data):
+    """Save YAML data in readable order."""
+
+    with open(file_path, "w", encoding="utf-8") as file:
+        yaml.safe_dump(data, file, sort_keys=False, allow_unicode=True)
+
+
+def update_splat_data_yaml(file_path, section_name, section_data):
+    """Update one section of splat_data.yaml."""
+
+    data = load_yaml_file(file_path)
+
+    if section_name not in data or data[section_name] is None:
+        data[section_name] = {}
+
+    data[section_name].update(section_data)
+    save_yaml_file(file_path, data)
+
+
+def matrix_to_yaml_list(matrix):
+    rows = []
+
+    for row in matrix:
+        rows.append([float(value) for value in row])
+
+    return rows
+
+
+def vector_to_yaml_list(values):
+    return [float(value) for value in values]
+
+
+def write_splat_data_yaml(
     file_path,
     splat_file_name,
     splat_file_path,
+    project_folder,
+    splat_count,
     T_splat_to_sim,
     T_sim_to_splat,
     T_splat_to_supersplat,
     supersplat_position,
     supersplat_rotation_deg,
 ):
-    """Write the transformation matrices as simple YAML text"""
+    """Write basic splat data and transformations."""
 
-    lines = []
-    lines.append("splat_file: " + format_string_for_yaml(splat_file_name))
-    lines.append("original_splat_file_path: " + format_string_for_yaml(splat_file_path))
-    lines.append("")
-    lines.append("T_splat_to_supersplat:")
-    lines.extend(format_matrix_for_yaml(T_splat_to_supersplat))
-    lines.append("")
-    lines.append("supersplat_transform:")
-    lines.append("  coordinate_system_note: " + format_string_for_yaml("SuperSplat uses y-up, sim uses z-up"))
-    lines.append("  position_xyz: " + format_vector_for_yaml(supersplat_position))
-    lines.append("  rotation_xyz_deg: " + format_vector_for_yaml(supersplat_rotation_deg))
-    lines.append("  scale: 1.000000")
-    lines.append("")
-    lines.append("T_splat_to_sim:")
-    lines.extend(format_matrix_for_yaml(T_splat_to_sim))
-    lines.append("")
-    lines.append("T_sim_to_splat:")
-    lines.extend(format_matrix_for_yaml(T_sim_to_splat))
-    lines.append("")
+    data = {
+        "files": {
+            "splat_file": splat_file_name,
+            "original_splat_file_path": splat_file_path,
+            "project_folder": project_folder,
+            "splat_data_file_path": file_path,
+        },
+        "metadata": {
+            "splat_count": int(splat_count),
+        },
+        "transforms": {
+            "T_splat_to_supersplat": matrix_to_yaml_list(T_splat_to_supersplat),
+            "supersplat_transform": {
+                "coordinate_system_note": "SuperSplat uses y-up, sim uses z-up",
+                "position_xyz": vector_to_yaml_list(supersplat_position),
+                "rotation_xyz_deg": vector_to_yaml_list(supersplat_rotation_deg),
+                "scale": 1.0,
+            },
+            "T_splat_to_sim": matrix_to_yaml_list(T_splat_to_sim),
+            "T_sim_to_splat": matrix_to_yaml_list(T_sim_to_splat),
+        },
+    }
 
-    with open(file_path, "w", encoding="utf-8") as file:
-        file.write("\n".join(lines))
-
-
-def format_string_for_yaml(value):
-
-    return "'" + str(value).replace("'", "''") + "'"
-
-
-def format_matrix_for_yaml(matrix):
-    """Format a 4x4 matrix as YAML rows"""
-
-    lines = []
-
-    for row in matrix:
-        formatted_values = []
-
-        for value in row:
-            formatted_values.append(format(value, ".6f"))
-
-        lines.append("  - [" + ", ".join(formatted_values) + "]")
-
-    return lines
-
-
-def format_vector_for_yaml(values):
-    """Format a short vector for YAML"""
-
-    formatted_values = []
-
-    for value in values:
-        formatted_values.append(format(value, ".6f"))
-
-    return "[" + ", ".join(formatted_values) + "]"
+    save_yaml_file(file_path, data)
 
 
 def write_top_down_grid(file_path, occupancy_grid, cell_size, origin_xy, height_range, T_splat_to_sim, T_sim_to_splat):
@@ -215,7 +237,7 @@ def show_top_down_grid(grid_file_path):
     x_max = x_min + width
     y_max = y_min + height
 
-    plt.figure("Top-Down Grid")
+    plt.figure("Occupancy Grid")
     plt.imshow(
         occupancy_grid,
         origin="lower",
@@ -227,7 +249,7 @@ def show_top_down_grid(grid_file_path):
     )
     plt.xlabel("x im Sim-KS")
     plt.ylabel("y im Sim-KS")
-    plt.title("Top-Down Grid")
+    plt.title("Occupancy Grid")
     plt.show()
 
 

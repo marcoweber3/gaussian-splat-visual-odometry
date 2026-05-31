@@ -1,0 +1,248 @@
+---
+title: "Benchmarking_Gaussian_Splatting"
+author: "Paul Weigert & Marco Weber"
+date: "`r Sys.Date()`"
+output: pdf_document
+params:
+  folder: "default"
+header-includes:
+  - \usepackage{float}
+  - \usepackage{graphicx}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(zoo)
+```
+
+## Path
+
+```{r, echo=FALSE}
+# Ordner öffnen
+folder_path <- path.expand(params$folder)
+
+
+if (is.null(folder_path) || folder_path == "") {
+  stop("Kein Ordner übergeben.")
+}
+
+cat("Gewählter Ordner:\n") 
+cat(folder_path)
+
+# Datei suchen
+csv_files <- list.files(
+  folder_path,
+  pattern = "^vo_output\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+if (length(csv_files) == 0) {
+  stop("Keine vo_output.csv im Ordner oder Unterordnern gefunden.")
+}
+
+data_list <- list()
+image_list <- list()
+
+for (i in seq_along(csv_files)) {
+
+  csv_path <- csv_files[i]
+
+  temp_data <- read.csv(csv_path)
+
+  # Name des Ordners als ID (viel sinnvoller als 1,2,3)
+  temp_data$Datei <- basename(dirname(csv_path))
+
+  data_list[[i]] <- temp_data
+
+  # Bild im gleichen Ordner suchen
+  img_path <- file.path(dirname(csv_path), "vo_top_down_eval.png")
+
+  if (file.exists(img_path)) {
+    image_list[[i]] <- img_path
+  }
+}
+# Daten zusammenführen 
+data <- dplyr::bind_rows(data_list)
+
+cat("Anzahl Zeilen gesamt:", nrow(data), "\n")
+cat("Anzahl Datensätze:", length(data_list), "\n")
+
+head(data)
+
+
+
+
+```
+
+Folgende Grafik zeigt den vorgegebenen (echten) Weg in Rot und die Mittels des Visual Odometrie (ov) erzeugten weg.
+
+```{r echo=FALSE, results='asis'}
+for (i in seq_along(image_list)) {
+
+  img <- normalizePath(image_list[[i]], winslash = "/")
+
+  if (!file.exists(img)) {
+    cat("\\textbf{Bild fehlt:}", img, "\n\n")
+    next
+  }
+
+  cat("\n\\begin{figure}[H]\n")
+  cat("\\centering\n")
+
+  cat("\\includegraphics[width=0.8\\textwidth]{", img, "}\n", sep = "")
+
+  cat("\\caption{Trajektorie ", i, "}\n", sep = "")
+
+  cat("\\end{figure}\n\n")
+  
+  
+}
+```
+
+
+```{r echo=FALSE}
+data <- data |>
+  dplyr::mutate(
+    error_x = delta_x,
+    error_y = delta_y,
+    error_z = delta_z,
+
+    error_3d = sqrt(delta_x^2 + delta_y^2 + delta_z^2),
+    error_2d = sqrt(delta_x^2 + delta_y^2)
+  ) |>
+  dplyr::group_by(Datei) |>
+  dplyr::mutate(
+    step_idx = row_number(),        # 🔥 PAPER-LEVEL Zeitachse
+    dist_travelled = cumsum(sqrt(delta_x^2 + delta_y^2 + delta_z^2))
+  ) |>
+  dplyr::ungroup()
+
+
+per_file <- data |>
+  dplyr::group_by(Datei) |>
+  dplyr::summarise(
+
+    # Bias
+    mean_error_x = mean(error_x),
+    mean_error_y = mean(error_y),
+    mean_error_z = mean(error_z),
+
+    # Absolute performance
+    mean_3d = mean(error_3d),
+    mean_2d = mean(error_2d),
+
+    # SLAM STANDARD METRICS
+    rmse_3d = sqrt(mean(error_3d^2)),
+    rmse_2d = sqrt(mean(error_2d^2)),
+
+    # Robustness
+    median_2d = median(error_2d),
+    median_3d = median(error_3d),
+
+    p95_2d = quantile(error_2d, 0.95),
+    p95_3d = quantile(error_3d, 0.95),
+
+    .groups = "drop"
+  )
+
+overall <- data |>
+  dplyr::summarise(
+
+    rmse_2d = sqrt(mean(error_2d^2)),
+    rmse_3d = sqrt(mean(error_3d^2)),
+
+    mean_2d = mean(error_2d),
+    mean_3d = mean(error_3d),
+
+    median_2d = median(error_2d),
+    median_3d = median(error_3d),
+
+    p95_2d = quantile(error_2d, 0.95),
+    p95_3d = quantile(error_3d, 0.95)
+  )
+
+per_file
+overall
+
+# Plots
+
+# Fehlerverlauf
+ggplot(data, aes(x = step_idx, y = error_3d)) +
+  geom_line(alpha = 0.4) +
+  geom_smooth(se = FALSE, color = "red") +
+  facet_wrap(~Datei) +
+  labs(
+    title = "3D Error over Time",
+    x = "Frame Index",
+    y = "3D Error"
+  )
+
+ggplot(data, aes(x = step_idx, y = error_2d)) +
+  geom_line(alpha = 0.4, color = "blue") +
+  geom_smooth(se = FALSE, color = "darkblue") +
+  facet_wrap(~Datei) +
+  labs(
+    title = "2D Error over Time",
+    x = "Frame Index",
+    y = "2D Error"
+  )
+
+# Boxplot
+plot_data <- data |>
+  dplyr::select(Datei, error_2d, error_3d) |>
+  tidyr::pivot_longer(
+    cols = c(error_2d, error_3d),
+    names_to = "type",
+    values_to = "error"
+  )
+
+ggplot(plot_data, aes(x = Datei, y = error, fill = type)) +
+  geom_boxplot(outlier_alpha = 0.3) +
+  coord_flip() +
+  labs(
+    title = "Error Distribution per Trajectory",
+    x = "Trajectory",
+    y = "Error"
+  )
+
+# RMSE Vergleich
+rmse_plot <- per_file |>
+  tidyr::pivot_longer(
+    cols = c(rmse_2d, rmse_3d),
+    names_to = "type",
+    values_to = "rmse"
+  )
+
+ggplot(rmse_plot, aes(x = Datei, y = rmse, fill = type)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    title = "RMSE Comparison (2D vs 3D)",
+    x = "Trajectory",
+    y = "RMSE"
+  )
+
+# Drift vs Distance
+ggplot(data, aes(x = dist_travelled, y = error_3d)) +
+  geom_line(alpha = 0.5) +
+  geom_smooth(se = FALSE, color = "blue") +
+  facet_wrap(~Datei) +
+  labs(
+    title = "Drift vs Travel Distance",
+    x = "Distance Traveled",
+    y = "3D Error"
+  )
+
+ggplot(data, aes(x = dist_travelled, y = error_2d)) +
+  geom_line(alpha = 0.5) +
+  geom_smooth(se = FALSE, color = "blue") +
+  facet_wrap(~Datei) +
+  labs(
+    title = "Drift vs Travel Distance",
+    x = "Distance Traveled",
+    y = "2D Error"
+  )
+```

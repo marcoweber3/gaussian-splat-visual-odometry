@@ -7,7 +7,7 @@ import numpy as np
 
 POSE_SPACING = 0.05
 LOOKAHEAD_STEPS = 3
-SMOOTHING_ROUNDS = 5
+SMOOTHING_ROUNDS = 25
 
 
 def load_trajectory_csv(file_path):

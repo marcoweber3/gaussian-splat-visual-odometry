@@ -5,6 +5,7 @@ import subprocess
 import sys
 import threading
 import dearpygui.dearpygui as dpg
+from pathlib import Path
 from tkinter import Tk
 from tkinter import filedialog
 
@@ -24,6 +25,12 @@ STEP3_OUTPUT_FOLDER_NAME = "odometry_input"
 STEP3_ODOM_OUTPUT_FOLDER_NAME = "odometry_output"
 STEP3_IMAGES_FOLDER_NAME = "images"
 STEP3_POSES_FILE_NAME = "poses.txt"
+SPLAT_DATA_FILE_NAME = "splat_data.yaml"
+SHORT_EVALUATION_FOLDER_NAME = "short-evaluation"
+SHORT_EVALUATION_IMAGE_NAME = "vo_short_eval.png"
+TOP_DOWN_EVALUATION_IMAGE_NAME = "vo_top_down_eval.png"
+EVALUATION_METADATA_FILE_NAME = "metadata.csv"
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 HEADING_COLOR = (34*2, 83*2, 118*2)
 INSTRUCTION_COLOR = (248, 236, 185)
 OUTPUT_COLOR = (180, 180, 180)
@@ -60,6 +67,11 @@ def show_file_dialog():
 def set_tab_done(tab, text):
     # mark tab as finished: "[OK] ..."
     dpg.set_item_label(tab, STEP_DONE + " " + text)
+
+
+def set_tab_open(tab, text):
+    if dpg.does_item_exist(tab):
+        dpg.set_item_label(tab, STEP_OPEN + " " + text)
 
 
 def get_floor_candidate_view_data():
@@ -428,7 +440,7 @@ def calculate_final_transform():
 
     os.makedirs(output_dir, exist_ok=True)
 
-    transform_yaml_path = os.path.join(output_dir, "transform.yaml")
+    splat_data_file_path = os.path.join(output_dir, SPLAT_DATA_FILE_NAME)
     grid_file_path = os.path.join(output_dir, "top_down_grid.npz")
 
     T_splat_to_sim = step1_final_transform_data["T_splat_to_sim"]
@@ -453,10 +465,12 @@ def calculate_final_transform():
         cell_size,
     )
 
-    final_transform.write_transform_yaml(
-        transform_yaml_path,
+    final_transform.write_splat_data_yaml(
+        splat_data_file_path,
         splat_file_name,
         splat_file_path,
+        output_dir,
+        len(step1_point_cloud),
         T_splat_to_sim,
         T_sim_to_splat,
         T_splat_to_supersplat,
@@ -474,11 +488,15 @@ def calculate_final_transform():
     )
 
     step1_final_transform_data["output_dir"] = output_dir
-    step1_final_transform_data["transform_yaml"] = transform_yaml_path
+    step1_final_transform_data["splat_data_yaml"] = splat_data_file_path
     step1_final_transform_data["top_down_grid"] = grid_file_path
     step1_final_transform_data["T_splat_to_supersplat"] = T_splat_to_supersplat
     step1_final_transform_data["supersplat_position"] = supersplat_position
     step1_final_transform_data["supersplat_rotation_deg"] = supersplat_rotation_deg
+    if dpg.does_item_exist("splat_output_folder_input"):
+        dpg.set_value("splat_output_folder_input", output_dir)
+    if dpg.does_item_exist("3a_splat_output_folder_input"):
+        dpg.set_value("3a_splat_output_folder_input", output_dir)
 
     show_status("Gesamttransformation berechnet: Occupancy Grid prüfen\n")
 
@@ -489,7 +507,7 @@ def calculate_final_transform():
     if output_dir_exists:
         show_status("Hinweis: Vorhandener Ausgabeordner wurde überschrieben\n")
     show_status("\tDateien:\n")
-    show_status("\t\ttransform.yaml\n")
+    show_status("\t\tsplat_data.yaml\n")
     show_status("\t\ttop_down_grid.npz\n\n")
 
     show_status("SuperSplat Transformationswerte (Y-up):\n")
@@ -529,8 +547,6 @@ def calculate_final_transform():
 
 def show_saved_top_down_grid():
     """Open the saved top-down grid in Matplotlib"""
-
-    dpg.set_value("1d_output_text", "")
 
     def show_status(new_text):
         old_text = dpg.get_value("1d_output_text")
@@ -590,16 +606,16 @@ def select_splat_output_folder():
 
     # files from step 1D
     grid_file_path = os.path.join(selected_folder, "top_down_grid.npz")
-    transform_yaml_path = os.path.join(selected_folder, "transform.yaml")
-    transform_status = "transform.yaml gefunden"
-    if not os.path.isfile(transform_yaml_path):
-        transform_status = "transform.yaml nicht gefunden"
+    splat_data_file_path = os.path.join(selected_folder, SPLAT_DATA_FILE_NAME)
+    splat_data_status = "splat_data.yaml gefunden"
+    if not os.path.isfile(splat_data_file_path):
+        splat_data_status = "splat_data.yaml nicht gefunden"
 
     if not os.path.isfile(grid_file_path):
-        set_step2a_status("top_down_grid.npz nicht gefunden\n" + transform_status)
+        set_step2a_status("top_down_grid.npz nicht gefunden\n" + splat_data_status)
         return
 
-    set_step2a_status("top_down_grid.npz gefunden\n" + transform_status)
+    set_step2a_status("top_down_grid.npz gefunden\n" + splat_data_status)
 
     if os.path.isfile(os.path.join(selected_folder, "trajectory.csv")):
         set_tab_done("step2_tab_2a", "2A: Trajektorie")
@@ -617,6 +633,8 @@ def select_splat_output_folder():
 
     if os.path.isfile(os.path.join(selected_folder, STEP3_ODOM_OUTPUT_FOLDER_NAME, "vo_output.csv")):
         set_tab_done("step3_tab_3b", "3B: Odometrie ausführen")
+
+    update_step3_evaluation_statuses()
 
 
 def load_top_down_grid(grid_file_path):
@@ -672,7 +690,8 @@ def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
 
     points_xy = []
     saved_points_xy = []
-    title_text = "Rechtsklick: Wegpunkt setzen , Enter: speichern , Schließen: verwerfen\n Für Kurven: mehrere Punkte eng setzen"
+    last_mouse_xy = None
+    title_text = "W: Wegpunkt setzen , E: letzten Wegpunkt entfernen\nEnter: speichern , Schließen: verwerfen\nFür Kurven: mehrere Punkte eng setzen"
 
     # create matplotlib window
     fig, ax = plt.subplots(num="Trajektorie einzeichen")
@@ -701,21 +720,36 @@ def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
         trajectory_line.set_data(x_values, y_values)
         fig.canvas.draw_idle()
 
-    def on_click(event):
+    def on_mouse_move(event):
+        nonlocal last_mouse_xy
+
         if event.inaxes != ax:
             return
 
         if event.xdata is None or event.ydata is None:
             return
 
-        # right click adds a waypoint.
-        if event.button == 3:
-            points_xy.append([float(event.xdata), float(event.ydata)])
-            ax.set_title(title_text)
-            redraw_line()
+        last_mouse_xy = [float(event.xdata), float(event.ydata)]
 
     def on_key(event):
-        # Enter saves the trajectory
+        if event.key == "w":
+            if last_mouse_xy is None:
+                ax.set_title("Maus erst in die Karte bewegen")
+                fig.canvas.draw_idle()
+                return
+
+            points_xy.append(last_mouse_xy.copy())
+            ax.set_title(title_text)
+            redraw_line()
+            return
+
+        if event.key == "e":
+            if len(points_xy) > 0:
+                points_xy.pop()
+                ax.set_title(title_text)
+                redraw_line()
+            return
+
         if event.key == "enter":
             if len(points_xy) < 2:
                 ax.set_title("Mindestens zwei Wegpunkte setzen")
@@ -728,7 +762,7 @@ def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
             save_trajectory_csv(trajectory_file_path, saved_points_xy)
             plt.close(fig)
 
-    fig.canvas.mpl_connect("button_press_event", on_click)
+    fig.canvas.mpl_connect("motion_notify_event", on_mouse_move)
     fig.canvas.mpl_connect("key_press_event", on_key)
 
     plt.show()
@@ -772,6 +806,12 @@ def start_trajectory_drawing():
     if point_count is None:
         set_step2a_status(result_message)
         return
+
+    final_transform.update_splat_data_yaml(
+        os.path.join(selected_folder, SPLAT_DATA_FILE_NAME),
+        "trajectory_generation",
+        {"waypoint_count": int(point_count)},
+    )
 
     set_step2a_status(
         result_message
@@ -857,6 +897,18 @@ def generate_camera_poses():
         set_step2b_status(str(error))
         return
 
+    final_transform.update_splat_data_yaml(
+        os.path.join(step2_splat_output_dir, SPLAT_DATA_FILE_NAME),
+        "camera_pose_generation",
+        {
+            "camera_pose_count": len(step2_camera_poses),
+            "camera_height": camera_height,
+            "pose_distance": pose_spacing,
+            "look_ahead_steps": lookahead_steps,
+            "smoothing_passes": smoothing_rounds,
+        },
+    )
+
     set_step2b_status(
         "Kameraposen generiert\n\n"
         + "Wegpunkte: "
@@ -904,14 +956,14 @@ def export_supersplat_images_txt():
     selected_folder = step2_splat_output_dir
 
     camera_poses_file_path = os.path.join(selected_folder, "camera_poses_sim.csv")
-    transform_yaml_path = os.path.join(selected_folder, "transform.yaml")
+    splat_data_file_path = os.path.join(selected_folder, SPLAT_DATA_FILE_NAME)
 
     if not os.path.isfile(camera_poses_file_path):
         set_step2c_status("camera_poses_sim.csv nicht gefunden")
         return
 
-    if not os.path.isfile(transform_yaml_path):
-        set_step2c_status("transform.yaml nicht gefunden")
+    if not os.path.isfile(splat_data_file_path):
+        set_step2c_status("splat_data.yaml nicht gefunden")
         return
 
     set_step2c_status("images.txt wird erzeugt...")
@@ -937,14 +989,16 @@ def export_supersplat_images_txt():
         supersplat_export.write_images_txt(camera_poses, images_txt_path)
 
         # read transform values for instructions
-        supersplat_position, supersplat_rotation_deg = supersplat_export.load_supersplat_values_from_transform_yaml(transform_yaml_path)
+        supersplat_position, supersplat_rotation_deg = supersplat_export.load_supersplat_values_from_splat_data(splat_data_file_path)
+        splat_data = final_transform.load_yaml_file(splat_data_file_path)
     except Exception as error:
         set_step2c_status("Fehler beim Erzeugen der images.txt:\n" + str(error))
         return
 
     step2_images_txt_path = images_txt_path
+    original_splat_file_path = splat_data.get("files", {}).get("original_splat_file_path", "")
 
-    position_text = "Transformationswerte bitte aus transform.yaml übernehmen:\n" + transform_yaml_path + "\n\n"
+    position_text = "Transformationswerte bitte aus splat_data.yaml übernehmen:\n" + splat_data_file_path + "\n\n"
     rotation_text = ""
 
     if supersplat_position is not None and supersplat_rotation_deg is not None:
@@ -971,13 +1025,15 @@ def export_supersplat_images_txt():
         + "Nächste Schritte in SuperSplat:\n\n"
         + "1. SuperSplat Editor öffnen:\n"
         + "   https://superspl.at/editor\n\n"
-        + "2. Zugehörige Splat-Datei (.ply) durch Drag & Drop laden.\n\n"
+        + "2. Zugehörige Splat-Datei (.ply) durch Drag & Drop im SuperSplat Editor laden:\n\n\t"
+        + original_splat_file_path
+        + "\n\n"
         + "3. Im Bereich Transformation diese Werte eintragen:\n\n"
         + position_text
         + rotation_text
         + "\tSkalierung: 1\n\n"
         + "4. Kameraposen über 'Datei' -> 'Importieren...' durch folgende Datei importieren:\n\n\t"
-        + images_txt_path
+        + os.path.abspath(images_txt_path)
         + "\n\n"
         + "\tDadurch werden die Kameraposen als Frames in die Zeitleiste eingefügt.\n\tDie Zeitleiste ggf. ganz unten links durch Klick auf 'ZEITLEISTE' aufklappen.\n\n"
         + "5. Gesamtzahl der Frames unten rechts erhöhen auf: "
@@ -986,7 +1042,7 @@ def export_supersplat_images_txt():
         + "\tEine Preview kann durch klick auf den Play-Button in der Zeitleiste gestartet werden.\n\n"
         + "6. Video rendern über 'Rendern' -> 'Video...'. Auflösung optional auf 1280x720 stellen (schnelleres Rendern), Rest beibehalten.\n\n"
         + "7. Das Video in den erzeugten Video-Ordner exportieren:\n\n\t"
-        + video_folder
+        + os.path.abspath(video_folder)
         + "\n\n\n"
         + "Warte bis das Rendering abgeschlossen ist und klappe anschließend Schritt 2 zu und fahre mit Schritt 3A fort"
     )
@@ -1054,6 +1110,8 @@ def select_step3a_splat_output_folder():
     if os.path.isfile(os.path.join(selected_folder, STEP3_ODOM_OUTPUT_FOLDER_NAME, "vo_output.csv")):
         set_tab_done("step3_tab_3b", "3B: Odometrie ausführen")
 
+    update_step3_evaluation_statuses()
+
 
 def prepare_visual_odometry_data():
     global step3_odom_data_path
@@ -1114,6 +1172,7 @@ def prepare_visual_odometry_data():
         + "\n\nFahre mit Schritt 3B fort"
     )
     set_tab_done("step3_tab_3a", "3A: Daten vorbereiten")
+    update_step3_evaluation_statuses()
 
 
 def run_visual_odometry():
@@ -1174,11 +1233,32 @@ def run_visual_odometry():
 
 
 def set_step3c_status(text):
-    dpg.set_value("3c_status_text", text)
-    dpg.render_dearpygui_frame()
+    if dpg.does_item_exist("3c_status_text"):
+        dpg.set_value("3c_status_text", text)
+        dpg.render_dearpygui_frame()
 
 
-def show_evaluation_plot():
+def set_step3d_status(text):
+    if dpg.does_item_exist("3d_status_text"):
+        dpg.set_value("3d_status_text", text)
+        dpg.render_dearpygui_frame()
+
+
+def get_central_evaluation_folder():
+    return os.path.join(REPO_ROOT, "evaluation")
+
+
+def open_central_evaluation_folder():
+    evaluation_folder = get_central_evaluation_folder()
+    os.makedirs(evaluation_folder, exist_ok=True)
+
+    try:
+        os.startfile(evaluation_folder)
+    except OSError as error:
+        set_step3d_status("Evaluations-Ordner konnte nicht geöffnet werden:\n" + str(error))
+
+
+def get_step3_selected_splat_folder():
     selected_folder = ""
 
     if dpg.does_item_exist("3a_splat_output_folder_input"):
@@ -1191,19 +1271,139 @@ def show_evaluation_plot():
         selected_folder = step2_splat_output_dir
 
     if selected_folder == "":
+        return ""
+
+    return os.path.normpath(selected_folder)
+
+
+def get_evaluation_trajectory_names():
+    evaluation_folder = get_central_evaluation_folder()
+
+    if not os.path.isdir(evaluation_folder):
+        return []
+
+    names = []
+    for name in os.listdir(evaluation_folder):
+        folder_path = os.path.join(evaluation_folder, name)
+        if os.path.isdir(folder_path):
+            names.append(name)
+
+    return sorted(names)
+
+
+def get_short_evaluation_folder(selected_folder):
+    return os.path.join(selected_folder, SHORT_EVALUATION_FOLDER_NAME)
+
+
+def update_evaluation_trajectory_list():
+    names = get_evaluation_trajectory_names()
+
+    if len(names) == 0:
+        list_text = "Keine Trajektorien im zentralen evaluation-Ordner gefunden."
+    else:
+        list_text = "\n".join(names)
+
+    if dpg.does_item_exist("3d_evaluation_trajectory_list"):
+        dpg.set_value("3d_evaluation_trajectory_list", list_text)
+
+
+def update_evaluation_folder_name_input():
+    selected_folder = get_step3_selected_splat_folder()
+
+    if selected_folder == "" or not dpg.does_item_exist("3d_trajectory_name_input"):
+        return
+
+    splat_data_file = os.path.join(selected_folder, SPLAT_DATA_FILE_NAME)
+    splat_data = final_transform.load_yaml_file(splat_data_file)
+    evaluation_data = splat_data.get("evaluation", {}) or {}
+    evaluation_folder_name = evaluation_data.get("evaluation_folder_name")
+
+    if evaluation_folder_name is None:
+        dpg.set_value("3d_trajectory_name_input", "")
+    else:
+        dpg.set_value("3d_trajectory_name_input", evaluation_folder_name)
+
+
+def get_short_evaluation_path(selected_folder):
+    return os.path.join(get_short_evaluation_folder(selected_folder), SHORT_EVALUATION_IMAGE_NAME)
+
+
+def get_top_down_evaluation_path(selected_folder):
+    return os.path.join(get_short_evaluation_folder(selected_folder), TOP_DOWN_EVALUATION_IMAGE_NAME)
+
+
+def update_step3c_ok_status():
+    selected_folder = get_step3_selected_splat_folder()
+
+    if (
+        selected_folder != ""
+        and os.path.isfile(get_short_evaluation_path(selected_folder))
+        and os.path.isfile(get_top_down_evaluation_path(selected_folder))
+    ):
+        set_tab_done("step3_tab_3c", "3C: Kompakt-Evaluation")
+    else:
+        set_tab_open("step3_tab_3c", "3C: Kompakt-Evaluation")
+
+
+def update_step3d_ok_status():
+    selected_folder = get_step3_selected_splat_folder()
+
+    if selected_folder == "":
+        set_tab_open("step3_tab_3d", "3D: Ausführliche Evaluation")
+        return
+
+    splat_data_file = os.path.join(selected_folder, SPLAT_DATA_FILE_NAME)
+    splat_data = final_transform.load_yaml_file(splat_data_file)
+    evaluation_data = splat_data.get("evaluation", {})
+    evaluation_folder_name = evaluation_data.get("evaluation_folder_name")
+
+    if evaluation_folder_name is None:
+        set_tab_open("step3_tab_3d", "3D: Ausführliche Evaluation")
+        return
+
+    evaluation_folder = os.path.join(get_central_evaluation_folder(), evaluation_folder_name)
+
+    if os.path.isdir(evaluation_folder):
+        set_tab_done("step3_tab_3d", "3D: Ausführliche Evaluation")
+    else:
+        set_tab_open("step3_tab_3d", "3D: Ausführliche Evaluation")
+
+
+def update_step3_evaluation_statuses():
+    update_evaluation_trajectory_list()
+    update_evaluation_folder_name_input()
+    update_step3c_ok_status()
+    update_step3d_ok_status()
+
+
+def show_evaluation_plot():
+    selected_folder = get_step3_selected_splat_folder()
+
+    if selected_folder == "":
         set_step3c_status("Erst einen Splat-Ordner unter 3A auswählen")
         return
 
     csv_file = os.path.join(
-        os.path.normpath(selected_folder),
+        selected_folder,
         STEP3_ODOM_OUTPUT_FOLDER_NAME,
         "vo_output.csv",
     )
-    grid_file = os.path.join(os.path.normpath(selected_folder), "top_down_grid.npz")
+    grid_file = os.path.join(selected_folder, "top_down_grid.npz")
 
     if not os.path.isfile(csv_file):
         set_step3c_status("vo_output.csv nicht gefunden")
         return
+
+    evaluation_png_path = get_short_evaluation_path(selected_folder)
+    top_down_png_path = get_top_down_evaluation_path(selected_folder)
+    set_step3c_status(
+        "Evaluation wird erzeugt aus:\n"
+        + csv_file
+        + "\n\nKompakt-Evaluation gespeichert unter:\n"
+        + evaluation_png_path
+        + "\n\nTop-Down-Vergleich gespeichert unter:\n"
+        + top_down_png_path
+    )
 
     try:
         odometry_evaluation.plot_odometry_csv(csv_file, grid_file)
@@ -1211,7 +1411,261 @@ def show_evaluation_plot():
         set_step3c_status(str(error))
         return
 
-    set_step3c_status("Evaluation angezeigt:\n" + csv_file)
+    set_step3c_status(
+        "Evaluation generiert aus:\n"
+        + csv_file
+        + "\n\nKompakt-Evaluation gespeichert unter:\n"
+        + evaluation_png_path
+        + "\n\nTop-Down-Vergleich gespeichert unter:\n"
+        + top_down_png_path
+    )
+    set_tab_done("step3_tab_3c", "3C: Kompakt-Evaluation")
+    odometry_evaluation.show_evaluation_window()
+
+
+def is_valid_evaluation_folder_name(folder_name):
+    invalid_characters = '\\/:*?"<>|'
+
+    if folder_name == "":
+        return False
+
+    if folder_name in [".", ".."]:
+        return False
+
+    if any(character.isspace() for character in folder_name):
+        return False
+
+    for character in invalid_characters:
+        if character in folder_name:
+            return False
+
+    return True
+
+
+def format_evaluation_metadata_key(key):
+    key_names = {
+        "splat_count": "SplatCount",
+        "waypoint_count": "WaypointCount",
+        "camera_pose_count": "CameraPoseCount",
+        "camera_height": "CameraHeight",
+        "pose_distance": "PoseDistance",
+        "look_ahead_steps": "LookAheadSteps",
+        "smoothing_passes": "SmoothingPasses",
+    }
+
+    if key in key_names:
+        return key_names[key]
+
+    return key
+
+
+def write_evaluation_metadata_csv(selected_folder, target_folder):
+    splat_data_file = os.path.join(selected_folder, SPLAT_DATA_FILE_NAME)
+    splat_data = final_transform.load_yaml_file(splat_data_file)
+
+    files = splat_data.get("files", {}) or {}
+    metadata = splat_data.get("metadata", {}) or {}
+    trajectory_generation = splat_data.get("trajectory_generation", {}) or {}
+    camera_pose_generation = splat_data.get("camera_pose_generation", {}) or {}
+    project_folder = files.get("project_folder", "")
+    project_folder_name = ""
+    if project_folder != "":
+        project_folder_name = os.path.basename(os.path.normpath(project_folder))
+
+    rows = [
+        ["OriginalSplatFileName", files.get("splat_file", "")],
+        ["GeneratedSplatFolderName", project_folder_name],
+        ["SplatCount", metadata.get("splat_count", "")],
+        ["WaypointCount", trajectory_generation.get("waypoint_count", "")],
+        ["CameraPoseCount", camera_pose_generation.get("camera_pose_count", "")],
+    ]
+
+    for key in sorted(camera_pose_generation.keys()):
+        if key == "camera_pose_count":
+            continue
+        rows.append([format_evaluation_metadata_key(key), camera_pose_generation.get(key, "")])
+
+    metadata_file = os.path.join(target_folder, EVALUATION_METADATA_FILE_NAME)
+    with open(metadata_file, "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Key", "Value"])
+        writer.writerows(rows)
+
+
+def save_evaluation_data_for_later_analysis():
+    trajectory_name = dpg.get_value("3d_trajectory_name_input").strip()
+
+    if trajectory_name == "":
+        set_step3d_status("Bitte einen Trajektoriennamen eingeben.")
+        return
+
+    if not is_valid_evaluation_folder_name(trajectory_name):
+        set_step3d_status(
+            'Ungültige Zeichen im Ordnernamen. Bitte keine Leerzeichen verwenden, stattdessen Unterstriche. '
+            'Vermeide Sonderzeichen wie \\ / : * ? " < > |.'
+        )
+        return
+
+    selected_folder = get_step3_selected_splat_folder()
+    if selected_folder == "":
+        set_step3d_status("Erst einen Splat-Ordner unter 3A auswählen")
+        return
+
+    source_csv = os.path.join(selected_folder, STEP3_ODOM_OUTPUT_FOLDER_NAME, "vo_output.csv")
+    source_image = get_top_down_evaluation_path(selected_folder)
+
+    if not os.path.isfile(source_csv):
+        set_step3d_status("vo_output.csv nicht gefunden. Erst Schritt 3B ausführen.")
+        return
+
+    if not os.path.isfile(source_image):
+        set_step3d_status("vo_top_down_eval.png nicht gefunden. Erst die Kompakt-Evaluation generieren und anzeigen.")
+        return
+
+    evaluation_folder = get_central_evaluation_folder()
+    target_folder = os.path.join(evaluation_folder, trajectory_name)
+
+    if os.path.exists(target_folder):
+        set_step3d_status(
+            "Ein Ordner mit demselben Namen ist bereits vorhanden. Bitte umbenennen oder den vorhandenen Ordner manuell löschen."
+            + "\n"
+            + target_folder
+        )
+        return
+
+    try:
+        os.makedirs(target_folder)
+        shutil.copy2(source_csv, os.path.join(target_folder, "vo_output.csv"))
+        shutil.copy2(source_image, os.path.join(target_folder, TOP_DOWN_EVALUATION_IMAGE_NAME))
+        write_evaluation_metadata_csv(selected_folder, target_folder)
+        final_transform.update_splat_data_yaml(
+            os.path.join(selected_folder, SPLAT_DATA_FILE_NAME),
+            "evaluation",
+            {"evaluation_folder_name": trajectory_name},
+        )
+    except OSError as error:
+        set_step3d_status("Speichern fehlgeschlagen:\n" + str(error))
+        return
+
+    update_evaluation_trajectory_list()
+    set_step3d_status(
+        "Speichern im Evaluationsordner erfolgreich."
+        + "\n"
+        + target_folder
+        + "\n\nZusätzliche Metadaten gespeichert in: "
+        + EVALUATION_METADATA_FILE_NAME
+        + "\n\nDetail- bzw. Vergleichsevaluation kann gestartet werden."
+    )
+    set_tab_done("step3_tab_3d", "3D: Ausführliche Evaluation")
+
+
+def show_detail_comparison_confirmation():
+    update_evaluation_trajectory_list()
+    names = get_evaluation_trajectory_names()
+
+    if len(names) == 0:
+        set_step3d_status("Keine Trajektorienordner im zentralen evaluation-Ordner gefunden.")
+        return
+
+    dpg.set_value("3d_detail_eval_confirm_list", "\n".join(names))
+    dpg.show_item("3d_detail_eval_confirm_window")
+
+
+def get_rscript_path():
+    rscript_path = shutil.which("Rscript")
+
+    if rscript_path is not None:
+        return rscript_path
+
+    possible_paths = [
+        Path(sys.prefix) / "Scripts" / "Rscript.exe",
+        Path(sys.prefix) / "Library" / "bin" / "Rscript.exe",
+        Path(sys.prefix) / "bin" / "Rscript",
+        Path(sys.prefix) / "bin" / "Rscript.exe",
+    ]
+
+    for possible_path in possible_paths:
+        if possible_path.is_file():
+            return str(possible_path)
+
+    return None
+
+
+def run_detail_evaluation_pdf():
+    dpg.hide_item("3d_detail_eval_confirm_window")
+
+    repo_root = Path(__file__).resolve().parent.parent
+    evaluation_folder = repo_root / "evaluation"
+    pdf_file = evaluation_folder / "Benchmarking_Gaussian_Splatting.pdf"
+    script_file = repo_root / "render_evaluation_pdf.R"
+    rscript_path = get_rscript_path()
+    old_pdf_time = None
+
+    if pdf_file.is_file():
+        old_pdf_time = pdf_file.stat().st_mtime
+
+    if rscript_path is None:
+        set_step3d_status(
+            "Rscript wurde nicht gefunden.\n\n"
+            + "Bitte die Pipeline aus dem Conda-Environment starten, das r-base enthält:\n"
+            + "conda activate splat-loc-sim-env\n"
+            + "python start_pipeline.py"
+        )
+        return
+
+    command = [rscript_path, str(script_file)]
+    status_text = (
+        "PDF-Evaluation wird generiert.\n"
+        + "Bitte warten, das kann etwas dauern...\n\n"
+        + "Ausgabe:\n"
+    )
+    set_step3d_status(status_text)
+
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=str(repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+
+        for line in process.stdout:
+            status_text += line
+            set_step3d_status(status_text)
+
+        return_code = process.wait()
+    except FileNotFoundError as error:
+        set_step3d_status("Rscript wurde nicht gefunden.\n" + str(error))
+        return
+
+    if return_code != 0:
+        if pdf_file.is_file() and (old_pdf_time is None or pdf_file.stat().st_mtime > old_pdf_time):
+            set_step3d_status(
+                status_text
+                + "\nPDF-Evaluation wurde generiert."
+                + "\n"
+                + str(pdf_file)
+                + "\n\nHinweis: R hat trotzdem einen Fehlercode gemeldet. Wenn die PDF normal geöffnet werden kann, kann diese Meldung ignoriert werden."
+            )
+            return
+
+        set_step3d_status(
+            status_text
+            + "\n"
+            "PDF-Evaluation konnte nicht generiert werden.\n"
+            + "Bitte mögliche Probleme mit der LaTeX-Engine / tectonic prüfen.\n\n"
+            + "Fehlercode: "
+            + str(return_code)
+        )
+        return
+
+    set_step3d_status(
+        status_text
+        + "\nPDF-Evaluation wurde generiert."
+        + "\n"
+        + str(pdf_file)
+    )
 
 
 def run_plane_search():
@@ -1378,7 +1832,7 @@ def build_step1_area():
             with dpg.tab(label=STEP_OPEN + " 1D: Transformation", tag="step1_tab_1d"):
                 dpg.add_text("Transformation zwischen Simulations- und Splat-Koordinatensystem berechnen und speichern", color=HEADING_COLOR)
                 dpg.add_text("Output:", color=OUTPUT_COLOR)
-                dpg.add_text("\t- Transformationen: transform.yaml", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Transformationen und Metadaten: splat_data.yaml", color=OUTPUT_COLOR)
                 dpg.add_text("\t- Occupancy Grid: top_down_grid.npz", color=OUTPUT_COLOR)
                 dpg.add_text("Lass die Transformationen berechnen und überprüfe das generierte Occupancy Grid.", color=INSTRUCTION_COLOR)
                 dpg.add_button(label="Transformation und Grid generieren", callback=calculate_final_transform)
@@ -1395,9 +1849,11 @@ def build_step2_area():
             # section 2A
             with dpg.tab(label=STEP_OPEN + " 2A: Trajektorie", tag="step2_tab_2a"):
                 dpg.add_text("Trajektorie festlegen", color=HEADING_COLOR)
-                dpg.add_text("Output: manuell gezeichnete Wegpunkte in trajectory.csv", color=OUTPUT_COLOR)
+                dpg.add_text("Output:", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Manuell gesetzte Wegpunkte: trajectory.csv", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Anzahl der Wegpunkte ergänzt in: splat_data.yaml", color=OUTPUT_COLOR)
 
-                dpg.add_text("Wähle den generierten Ordner aus `splats/...`, der zu deiner Splat-Datei gehört.\n", color=INSTRUCTION_COLOR)
+                dpg.add_text("Wähle (falls nicht bereits hinterlegt) den generierten Ordner aus `splats/<Splat-Datei-Name>`, der zu deiner Splat-Datei gehört.\n", color=INSTRUCTION_COLOR)
                 dpg.add_text("Daraus werden Occupancy Grid und Transformation aus Schritt 1 geladen und weitere Daten abgelegt.")
 
                 with dpg.group(horizontal=True):
@@ -1408,7 +1864,8 @@ def build_step2_area():
                 dpg.add_text("\t - Die Trajektorie besteht aus geraden Linien zwischen den Wegpunkten.")
                 dpg.add_text("\t - Für Kurven bitte mehrere Punkte eng hintereinander setzen. Kurvenglättungen werden nur in kleinem Umfang erzeugt.")
                 dpg.add_text("\t - Zu enge Kurven können bei nicht ausreichender Framezahl zu Problemen bei der Visuellen Odometrie führen.")
-                dpg.add_text("\t - Im Zeichenfenster setzt Rechtsklick einen Wegpunkt")
+                dpg.add_text("\t - Im Zeichenfenster setzt W einen Wegpunkt")
+                dpg.add_text("\t - Mit E wird der zuletzt gesetzte Wegpunkt entfernt")
                 dpg.add_text("\t - Mit Enter wird gespeichert, beim Schließen wird verworfen.")
 
                 dpg.add_button(label="Trajektorie einzeichnen", callback=start_trajectory_drawing)
@@ -1418,8 +1875,10 @@ def build_step2_area():
             # section 2B
             with dpg.tab(label=STEP_OPEN + " 2B: Kameraposen", tag="step2_tab_2b"):
                 dpg.add_text("Kameraposen generieren", color=HEADING_COLOR)
-                dpg.add_text("Output: Kameraposen im Sim-KS in camera_poses_sim.csv", color=OUTPUT_COLOR)
-                dpg.add_text("Passe optional die Parameter an und generiere die Kameraposen aus der Trajektorie.", color=INSTRUCTION_COLOR)
+                dpg.add_text("Output:\n", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Kameraposen im Simulations-Koordinatensystem: camera_poses_sim.csv", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Posenanzahl und Parameter ergänzt in: splat_data.yaml", color=OUTPUT_COLOR)
+                dpg.add_text("Speichert Kameraposen und Parameter der Posengenerierung.", color=INSTRUCTION_COLOR)
                 dpg.add_text("Kamerahöhe über Boden")
                 dpg.add_input_float(tag="camera_height_input", default_value=0.4, width=160)
                 dpg.add_text("Posen-Abstand - Abstand der Kameraposen entlang der Trajektorie (je kleiner, desto mehr Posen)")
@@ -1448,7 +1907,7 @@ def build_step2_area():
 def build_step3_area():
     
     with dpg.collapsing_header(label="Schritt 3: Visuelle Lokalisierung und Evaluation"):
-        with dpg.tab_bar(tag="step3_tab_bar"):
+        with dpg.tab_bar(tag="step3_tab_bar", callback=update_step3_evaluation_statuses):
             
             # section 3A
             with dpg.tab(label=STEP_OPEN + " 3A: Daten vorbereiten", tag="step3_tab_3a"):
@@ -1456,7 +1915,7 @@ def build_step3_area():
                 dpg.add_text("Output:", color=OUTPUT_COLOR)
                 dpg.add_text("\t- Einzelbilder: odometry_input\\images\\*.png", color=OUTPUT_COLOR)
                 dpg.add_text("\t- Posen für Odometrie im KITTI-Odometry-Format: odometry_input\\poses.txt", color=OUTPUT_COLOR)
-                dpg.add_text("Wähle (falls nicht bereits hinterlegt) den Ordner aus `splats/...`, der zu deiner Splat-Datei gehört.\n", color=INSTRUCTION_COLOR)
+                dpg.add_text("Wähle (falls nicht bereits hinterlegt) den Ordner aus `splats/<Splat-Datei-Name>`, der zu deiner Splat-Datei gehört.\n", color=INSTRUCTION_COLOR)
                 dpg.add_text("Daraus werden gerendertes Video und Kameraposen aus Schritt 2 geladen und weitere Daten abgelegt.")
                 default_splat_folder = ""
                 if step2_splat_output_dir is not None:
@@ -1473,7 +1932,7 @@ def build_step3_area():
             # section 3B
             with dpg.tab(label=STEP_OPEN + " 3B: Odometrie ausführen", tag="step3_tab_3b"):
                 dpg.add_text("Odometrie ausführen", color=HEADING_COLOR)
-                dpg.add_text("Output: Ausgabedaten der Visual Odometry odometry_output\\vo_output.csv", color=OUTPUT_COLOR)
+                dpg.add_text("Output: Ausgabedaten der Visual Odometry: odometry_output\\vo_output.csv", color=OUTPUT_COLOR)
                 dpg.add_text("Starte die visuelle Odometrie mit den vorbereiteten Daten. Das Skript läuft in einem separaten Prozess.", color=INSTRUCTION_COLOR)
                 dpg.add_text("Die Odometrie Basiert auf dem Repository 'Monocular-Video-Odometry' von Ali Shobeiri (siehe Readme)\nund nutzt Feature-Tracking, Essential-Matrix-Schätzung und RANSAC zur Bewegungsschätzung.")
                 dpg.add_text("Für die Auswertung wurde die Implementierung erweitert:\nPro Frame werden geschätzte Pose, Ground-Truth-Pose und zusätzliche Metriken in einer CSV-Datei gespeichert.")
@@ -1481,13 +1940,58 @@ def build_step3_area():
                 dpg.add_input_text(tag="3b_status_text", default_value="", multiline=True, readonly=True, width=970, height=80)
 
             # section 3C
-            with dpg.tab(label=STEP_OPEN + " 3C: Evaluation", tag="step3_tab_3c"):
-                dpg.add_text("Evaluation anzeigen", color=HEADING_COLOR)
-                #dpg.add_text("Output: ", color=OUTPUT_COLOR)
-                dpg.add_text("Zeigt Ground-Truth und geschätzte Trajektorie auf der Occupancy Map.", color=INSTRUCTION_COLOR)
-                dpg.add_button(label="Evaluation anzeigen", callback=show_evaluation_plot)
-                dpg.add_input_text(tag="3c_status_text", default_value="", multiline=True, readonly=True, width=970, height=80)
+            with dpg.tab(label=STEP_OPEN + " 3C: Kompakt-Evaluation", tag="step3_tab_3c"):
+                dpg.add_text("Kompakt-Evaluation generieren und anzeigen", color=HEADING_COLOR)
+                dpg.add_text("Output:", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Evaluationskennzahlen ergänzt in: splat_data.yaml", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Kompakt-Evaluationsgrafik: short-evaluation\\vo_short_eval.png", color=OUTPUT_COLOR)
+                dpg.add_text("\t- Top-Down-Vergleichsgrafik: short-evaluation\\vo_top_down_eval.png", color=OUTPUT_COLOR)
+                dpg.add_text("Lass die kompakte Evaluation generieren und anzeigen, um die Ergebnisse der visuellen Odometrie zu visualisieren.", color=INSTRUCTION_COLOR)
+                dpg.add_button(label="Kompakt-Evaluation generieren undanzeigen", callback=show_evaluation_plot)
+                dpg.add_input_text(tag="3c_status_text", default_value="", multiline=True, readonly=True, width=970, height=120)
 
+            # section 3D
+            with dpg.tab(label=STEP_OPEN + " 3D: Ausführliche Evaluation", tag="step3_tab_3d"):
+                dpg.add_text("Ausführliche Evaluation vorbereiten, generieren und anzeigen", color=HEADING_COLOR)
+                dpg.add_text("Speichere hierüber die aktuellen Evaluationsdaten für eine detaillierte Analyse bzw. Vergleichsanalyse\nin den zentralen Evaluations-Ordner ('/evaluation'). Vergib dafür einen aussagekräftigen Namen für die Trajektorie.", color=INSTRUCTION_COLOR)
+                dpg.add_text("Hinweise zum Trajektoriennamen:")
+                dpg.add_text("\t- Keine Leerzeichen verwenden, stattdessen Unterstriche.")
+                dpg.add_text("\t- Keine Sonderzeichen verwenden, die für Ordnernamen ungültig sind.")
+                dpg.add_text("\t- Beispiel für einen guten Namen: `Trajektorie_Test_Glättung_5`")
+                with dpg.group(horizontal=True):
+                    dpg.add_input_text(tag="3d_trajectory_name_input", hint="Trajektorienname", width=360)
+                    dpg.add_button(label="Evaluationsdaten speichern", callback=save_evaluation_data_for_later_analysis)
+                
+                dpg.add_separator()
+
+                dpg.add_text("\n\nGeneriere die Detail- bzw. Vergleichsevaluation, um eine ausführliche PDF-Auswertung mit zusätzlichen Grafiken und Analysen zu erhalten.\nDafür wird ein R-Prozess gestartet, der die Daten im zentralen Evaluationsordner verarbeitet.", color=INSTRUCTION_COLOR)
+                
+                dpg.add_text("\nDie Detailanalyse kann auch direkt nach Programmstart gestartet werden,\nsofern im zentralen Evaluations-Ordner ('/evaluation') bereits Trajektorien vorhanden sind.")
+                dpg.add_text("Berücksichtigte Trajektorien im Evaluations-Ordner:")
+                dpg.add_input_text(tag="3d_evaluation_trajectory_list", default_value="", multiline=True, readonly=True, width=360, height=70)
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Zum ausschließen einer Trajektorie aus der Detailanalyse:\nDen entsprechenden Ordner manuell aus dem zentralen Evaluationsordner entfernen.")
+                    with dpg.group():
+                        dpg.add_text("")
+                        dpg.add_button(label="Evaluations-Ordner öffnen", callback=open_central_evaluation_folder)
+
+                dpg.add_button(label="Detail- / Vergleichsevaluation generieren und anzeigen", callback=show_detail_comparison_confirmation)
+
+                dpg.add_text("")
+                dpg.add_separator()
+                dpg.add_text("")
+                dpg.add_input_text(tag="3d_status_text", default_value="", multiline=True, readonly=True, width=970, height=210)
+                update_step3_evaluation_statuses()
+
+
+def build_detail_evaluation_confirm_window():
+    with dpg.window(label="Detail- / Vergleichsevaluation", modal=True, show=False, tag="3d_detail_eval_confirm_window", width=560, height=330):
+        dpg.add_text("Für die Detail- bzw. Vergleichsevaluation werden folgende Trajektorien berücksichtigt:", wrap=520)
+        dpg.add_input_text(tag="3d_detail_eval_confirm_list", default_value="", multiline=True, readonly=True, width=520, height=130)
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="PDF generieren", callback=run_detail_evaluation_pdf)
+            dpg.add_button(label="Abbrechen", callback=lambda: dpg.hide_item("3d_detail_eval_confirm_window"))
+        dpg.add_text("Hinweis: Für die PDF-Generierung muss eine LaTeX-Engine verfügbar sein. Im installierten Conda-Environment ist dafür `tectonic` vorgesehen.", color=OUTPUT_COLOR, wrap=520)
 
 def main():
     dpg.create_context()
@@ -1513,6 +2017,8 @@ def main():
         build_step1_area()
         build_step2_area()
         build_step3_area()
+
+    build_detail_evaluation_confirm_window()
 
     dpg.create_viewport(title="Splat Localization Benchmark", width=1000, height=900)
     dpg.setup_dearpygui()
