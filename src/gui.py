@@ -1204,9 +1204,27 @@ def run_visual_odometry():
     step3_odom_data_path = odom_data_path
     script_folder = os.path.abspath(os.path.join("extern", "Monocular-Video-Odometery"))
     script_file = os.path.join(script_folder, "run_odom.py")
+
+    if not os.path.isdir(script_folder):
+        set_tab_open("step3_tab_3b", "3B: Odometrie ausführen")
+        dpg.set_value(
+            "3b_status_text",
+            "Fehler: Ordner der Visual-Odometry-Implementierung nicht gefunden:\n" + script_folder,
+        )
+        return
+
+    if not os.path.isfile(script_file):
+        set_tab_open("step3_tab_3b", "3B: Odometrie ausführen")
+        dpg.set_value(
+            "3b_status_text",
+            "Fehler: Python-Datei zum Ausführen der Visual Odometry nicht gefunden:\n" + script_file,
+        )
+        return
+
     output_folder = os.path.abspath(os.path.join(os.path.dirname(odom_data_path), STEP3_ODOM_OUTPUT_FOLDER_NAME))
     os.makedirs(output_folder, exist_ok=True)
     output_file = os.path.join(output_folder, "vo_output.csv")
+    old_output_time = os.path.getmtime(output_file) if os.path.isfile(output_file) else None
 
     process = subprocess.Popen([
         sys.executable,
@@ -1222,11 +1240,26 @@ def run_visual_odometry():
     dpg.set_value("3b_status_text", "Odometrie gestartet")
 
     def wait_for_odometry():
-        process.wait()
-        if os.path.isfile(output_file):
+        return_code = process.wait()
+        output_was_updated = (
+            os.path.isfile(output_file)
+            and (old_output_time is None or os.path.getmtime(output_file) > old_output_time)
+        )
+
+        if return_code == 0 and output_was_updated:
             dpg.set_value("3b_status_text", "Odometry Daten gespeichert unter:\n" + output_file + "\n\nFahre mit Schritt 3C fort")
             set_tab_done("step3_tab_3b", "3B: Odometrie ausführen")
+        elif return_code != 0:
+            set_tab_open("step3_tab_3b", "3B: Odometrie ausführen")
+            dpg.set_value(
+                "3b_status_text",
+                "Odometrie konnte nicht ausgeführt werden.\n"
+                + "vo_output.csv wurde nicht neu gespeichert.\n\n"
+                + "Fehlercode: "
+                + str(return_code),
+            )
         else:
+            set_tab_open("step3_tab_3b", "3B: Odometrie ausführen")
             dpg.set_value("3b_status_text", "Odometrie beendet, aber vo_output.csv wurde nicht gefunden")
 
     threading.Thread(target=wait_for_odometry, daemon=True).start()
