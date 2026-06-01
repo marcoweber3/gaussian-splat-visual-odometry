@@ -30,7 +30,9 @@ SHORT_EVALUATION_FOLDER_NAME = "short-evaluation"
 SHORT_EVALUATION_IMAGE_NAME = "vo_short_eval.png"
 TOP_DOWN_EVALUATION_IMAGE_NAME = "vo_top_down_eval.png"
 EVALUATION_METADATA_FILE_NAME = "metadata.csv"
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 HEADING_COLOR = (34*2, 83*2, 118*2)
 INSTRUCTION_COLOR = (248, 236, 185)
 OUTPUT_COLOR = (180, 180, 180)
@@ -1834,8 +1836,8 @@ def build_step1_area():
                 dpg.add_text("", tag="floor_orientation_status")
 
                 dpg.add_text("Stelle den Höhenfilter so ein, dass die Raumstruktur und Hindernisse in der Draufsicht möglichst klar erkennbar sind,\ndarüber wird später eine Occupancy Map erstellt.", color=INSTRUCTION_COLOR,)
-                dpg.add_slider_float(label="Höhenfilter: Untergrenze über Bodenebene", tag="floor_min_height_slider", default_value=0.0, min_value=0.0, max_value=3.0, width=420, callback=draw_floor_candidate)
-                dpg.add_slider_float(label="Höhenfilter: Obergrenze über Bodenebene", tag="floor_max_height_slider", default_value=3.0, min_value=0.0, max_value=3.0, width=420, callback=draw_floor_candidate)
+                dpg.add_slider_float(label="Höhenfilter: Untergrenze über Bodenebene", tag="floor_min_height_slider", default_value=0.2, min_value=0.2, max_value=3.0, width=420, callback=draw_floor_candidate)
+                dpg.add_slider_float(label="Höhenfilter: Obergrenze über Bodenebene", tag="floor_max_height_slider", default_value=1.0, min_value=0.0, max_value=3.0, width=420, callback=draw_floor_candidate)
                 dpg.add_text("Sichtbarer Höhenbereich: 0.00 bis 3.00 über der Bodenebene", tag="floor_height_status")
 
                 dpg.add_drawlist(width=700, height=420, tag="floor_candidate_preview")

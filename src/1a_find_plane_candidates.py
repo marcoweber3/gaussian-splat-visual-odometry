@@ -86,7 +86,7 @@ def run_step_1a(splat_file, status_callback):
     status_callback("\tAnzahl Punkte: " + str(len(point_cloud)) + "\n")
 
     if len(point_cloud) > HIGH_RES_SPLAT_POINT_COUNT:
-        status_callback("\tHinweis: Hochaufgelöste Splats können beim Rendering in 1B und 1C etwas länger brauchen. Bitte Geduld.\n")
+        status_callback("\tHinweis: Hochaufgelöste Splats können neben der Ebenensuche auch beim Rendering in 1B und 1C etwas länger brauchen. Bitte Geduld.\n")
 
     status_callback("\n")
 
