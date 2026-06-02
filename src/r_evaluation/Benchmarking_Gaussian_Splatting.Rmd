@@ -11,13 +11,58 @@ header-includes:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+
 library(dplyr)
 library(ggplot2)
 library(zoo)
+library(knitr)
+library(kableExtra)
 ```
 
-## Path
+# Introduction
+
+## Einführung
+
+Dieses Dokument zeigt die Auswertung eines oder mehrer Visual Odometrie (vo) Pfade.
+
+Die Bilder sind mittels eines 3D-Gaussian-Splat erstellt worden. Die Position an welcher ein Bild gerendert wird, wird als wahre (true) Positon zur Referenz verwendet.
+
+## Formeln
+
+Root Mean squared Error (RMSE)
+
+$$
+RMSE = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i-\hat{x}_i)^2}
+$$
+
+wobei n die Anzahl der Punkte/Koordinate ist und x der tatsächliche Wert (für x, y, z) und $\hat{x}$ der vohergesagte Wert ist. Dies entspricht den ATE (Absolute Trajectory Error).
+
+Alternativ wird auch der Mittelwert (mean)
+
+$$
+Mean = \frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{y}_i)
+$$
+
+95%-Quantil (P95)
+
+Das 95%-Quantil beschreibt den Fehlerwert, unter dem 95 % aller beobachteten Fehler liegen.
+
+$$
+P95 = Q_{0.95}(ATE)
+$$
+
+Dabei ist $Q_{0.95}$ das 95%-Quantil der Rmse-Werte.
+
+Im Gegensatz zum Maximum ist das 95%-Quantil robuster gegenüber einzelnen Ausreißern und gibt einen Eindruck davon, wie groß der Fehler in den meisten Fällen höchstens ist.
+
+# Auswertung
+
+## Pfade
 
 ```{r, echo=FALSE}
 # Ordner öffnen
@@ -27,9 +72,6 @@ folder_path <- path.expand(params$folder)
 if (is.null(folder_path) || folder_path == "") {
   stop("Kein Ordner übergeben.")
 }
-
-cat("Gewählter Ordner:\n") 
-cat(folder_path)
 
 # Datei suchen
 csv_files <- list.files(
@@ -44,14 +86,16 @@ if (length(csv_files) == 0) {
 }
 
 data_list <- list()
+meta_list <- list()
 image_list <- list()
 
 for (i in seq_along(csv_files)) {
 
   csv_path <- csv_files[i]
+  folder <- basename(dirname(csv_path))
 
   temp_data <- read.csv(csv_path)
-
+  
   # Name des Ordners als ID (viel sinnvoller als 1,2,3)
   temp_data$Datei <- basename(dirname(csv_path))
 
@@ -63,17 +107,30 @@ for (i in seq_along(csv_files)) {
   if (file.exists(img_path)) {
     image_list[[i]] <- img_path
   }
+  
+  # Metadaten
+  meta_path <- file.path(dirname(csv_path), "metadata.csv")
+  
+  if (file.exists(meta_path)) {
+
+    meta <- read.csv(meta_path, stringsAsFactors = FALSE)
+    meta_vec <- setNames(meta$Value, meta$Key)
+    
+    meta_df <- as.data.frame(as.list(meta_vec), stringsAsFactors = FALSE)
+    meta_df$Datei <- folder
+
+    meta_list[[i]] <- meta_df
+      
+  } else {
+    meta_list[[i]] <- data.frame(Datei = folder)
+  }
+  
 }
 # Daten zusammenführen 
 data <- dplyr::bind_rows(data_list)
+metadata <- dplyr::bind_rows(meta_list)
 
-cat("Anzahl Zeilen gesamt:", nrow(data), "\n")
-cat("Anzahl Datensätze:", length(data_list), "\n")
-
-head(data)
-
-
-
+data <- dplyr::left_join(data, metadata, by = "Datei")
 
 ```
 
@@ -89,12 +146,17 @@ for (i in seq_along(image_list)) {
     next
   }
 
+  caption <- basename(dirname(img))
+  caption <- gsub("_", "\\\\_", caption)
+  caption <- gsub("&", "\\\\&", caption)
+  caption <- gsub("%", "\\\\%", caption)
+  
   cat("\n\\begin{figure}[H]\n")
   cat("\\centering\n")
 
   cat("\\includegraphics[width=0.8\\textwidth]{", img, "}\n", sep = "")
 
-  cat("\\caption{Trajektorie ", i, "}\n", sep = "")
+  cat("\\caption{", caption, "}\n", sep = "")
 
   cat("\\end{figure}\n\n")
   
@@ -102,6 +164,7 @@ for (i in seq_along(image_list)) {
 }
 ```
 
+## Daten
 
 ```{r echo=FALSE}
 data <- data |>
@@ -115,7 +178,7 @@ data <- data |>
   ) |>
   dplyr::group_by(Datei) |>
   dplyr::mutate(
-    step_idx = row_number(),        # 🔥 PAPER-LEVEL Zeitachse
+    step_idx = row_number(),
     dist_travelled = cumsum(sqrt(delta_x^2 + delta_y^2 + delta_z^2))
   ) |>
   dplyr::ungroup()
@@ -139,8 +202,6 @@ per_file <- data |>
     rmse_2d = sqrt(mean(error_2d^2)),
 
     # Robustness
-    median_2d = median(error_2d),
-    median_3d = median(error_3d),
 
     p95_2d = quantile(error_2d, 0.95),
     p95_3d = quantile(error_3d, 0.95),
@@ -157,15 +218,40 @@ overall <- data |>
     mean_2d = mean(error_2d),
     mean_3d = mean(error_3d),
 
-    median_2d = median(error_2d),
-    median_3d = median(error_3d),
 
     p95_2d = quantile(error_2d, 0.95),
     p95_3d = quantile(error_3d, 0.95)
   )
 
-per_file
-overall
+per_file |>
+  mutate(
+    across(where(is.numeric), ~round(.x, 4))
+  ) |>
+  kbl(
+    caption = "Kennzahlen pro Trajektorie",
+    booktabs = TRUE,
+    align = "lrrrrrrrr"
+  ) |>
+  kable_styling(
+    latex_options = c("scale_down")
+  )
+
+overall |>
+  mutate(
+    across(where(is.numeric), ~round(.x, 4))
+  ) |>
+  kbl(
+    caption = "Gesamtergebnis über alle Trajektorien",
+    booktabs = TRUE
+  ) |>
+  kable_styling(
+    latex_options = c("scale_down")
+  )
+```
+
+## Grafiken
+
+```{r echo=FALSE}
 
 # Plots
 
@@ -246,3 +332,104 @@ ggplot(data, aes(x = dist_travelled, y = error_2d)) +
     y = "2D Error"
   )
 ```
+
+## Korrelation
+
+```{r echo=FALSE}
+
+df <- data
+
+features <- c(
+  "tracked_features",
+  "SplatCount",
+  "WaypointCount",
+  "CameraPoseCount",
+  "CameraHeight",
+  "LookAheadSteps",
+  "SmoothingPasses",
+  "PoseDistance",
+  "true_step",
+  "estimated_step"
+)
+
+num_df <- df |>
+  dplyr::select(mse_error, dplyr::all_of(features)) |>
+  dplyr::mutate(dplyr::across(everything(), as.numeric))
+
+results <- lapply(features, function(f) {
+
+  test <- cor.test(num_df[[f]], num_df$mse_error, method = "pearson")
+
+  data.frame(
+    feature = f,
+    correlation = test$estimate,
+    p_value = test$p.value
+  )
+})
+
+corr_df <- dplyr::bind_rows(results)
+
+corr_df <- corr_df |>
+  dplyr::mutate(
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE ~ ""
+    )
+  ) |>
+  dplyr::arrange(desc(abs(correlation)))
+
+
+ggplot(corr_df, aes(
+  x = reorder(feature, correlation),
+  y = correlation,
+  fill = correlation
+)) +
+  geom_col() +
+  coord_flip() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_text(
+    aes(label = significance),
+    hjust = ifelse(corr_df$correlation > 0, -0.2, 1.2),
+    size = 5
+  ) +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    limits = c(-1, 1)
+  ) +
+  labs(
+    title = "Performance Analytics: Correlation with MSE Error",
+    x = "Feature",
+    y = "Pearson Correlation (r)"
+  ) +
+  theme_minimal()
+```
+
+Die Sterne geben das Signifikanzniveau der Pearson-Korrelation an. Dabei gilt:
+
+-   p \< 0.05 → \* (signifikant)
+
+-   p \< 0.01 → \*\* (sehr signifikant)
+
+-   p \< 0.001 → \*\*\* (hoch signifikant)
+
+Fehlende Sterne bedeuten, dass kein statistisch signifikanter linearer Zusammenhang nachweisbar ist.
+
+Die Pearson-Korrelation gibt eine Aussage über den linearen beziehung der Merkmale. Dabei deutet der Betrag der Korrelation (r) für:
+
+-   r \< 0.3 → schwache Korrelation
+
+-   r \> 0.3 → mittlere Korrelation
+
+-   r \> 0.7 → starke Korrelation
+
+Das Vorzeichen deutet die Richtung der Deziehung an:
+
+-   r \> 0 → positiver Zusammenhang (wenn ein Merkmal steigt, steigt auch der Fehler)
+
+-   r \< 0 → negativer Zusammenhang (wenn ein merkmal steigt, sinkt der Fehler)
+
+bei r = 0 , scheint kein linearer Zusammenhang zwischen den Variablen zu bestehen.
