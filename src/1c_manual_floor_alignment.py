@@ -6,10 +6,12 @@ import numpy as np
 def build_rotation_z(yaw_deg):
     """Build a 4x4 rotation around the z-axis."""
 
+    # degrees to radians
     yaw_rad = np.deg2rad(yaw_deg)
     cos_yaw = np.cos(yaw_rad)
     sin_yaw = np.sin(yaw_rad)
 
+    # rotation
     transform = np.eye(4)
     transform[0, 0] = cos_yaw
     transform[0, 1] = -sin_yaw
@@ -24,10 +26,12 @@ def build_floor_raw_to_sim_transform(yaw_deg, origin_x, origin_y):
 
     T_rotate_z = build_rotation_z(yaw_deg)
 
+    # move origin
     T_origin = np.eye(4)
     T_origin[0, 3] = -origin_x
     T_origin[1, 3] = -origin_y
 
+    # rotate first, then move
     return T_origin @ T_rotate_z
 
 
@@ -45,6 +49,7 @@ def transform_points_2d(points_2d, yaw_deg, origin_x, origin_y):
     if len(points_2d) == 0:
         return np.empty((0, 2))
 
+
     yaw_rad = np.deg2rad(yaw_deg)
     cos_yaw = np.cos(yaw_rad)
     sin_yaw = np.sin(yaw_rad)
@@ -55,6 +60,7 @@ def transform_points_2d(points_2d, yaw_deg, origin_x, origin_y):
     rotated_x = cos_yaw * x_values - sin_yaw * y_values
     rotated_y = sin_yaw * x_values + cos_yaw * y_values
 
+    # origin shift
     sim_x = rotated_x - origin_x
     sim_y = rotated_y - origin_y
 

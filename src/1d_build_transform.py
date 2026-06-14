@@ -12,6 +12,7 @@ def build_final_transform(validated_floor_data, alignment_data):
     T_splat_to_floor_raw = validated_floor_data["view_data"]["T_splat_to_floor_raw"]
     T_floor_raw_to_sim = alignment_data["T_floor_raw_to_sim"]
 
+    # combine transforms
     T_splat_to_sim = T_floor_raw_to_sim @ T_splat_to_floor_raw
     T_sim_to_splat = np.linalg.inv(T_splat_to_sim)
 
@@ -28,8 +29,8 @@ def matrix_to_euler_xyz_deg(rotation_matrix):
 
     r = rotation_matrix
 
-    # This value is near zero if the y-rotation is close to 90 degrees.
-    # In that case x and z rotation cannot be separated clearly.
+    # value is near zero if the y-rotation is close to 90 degrees.
+    # in that case x and z rotation cannot be separated clearly.
     sy = np.sqrt(r[0, 0] ** 2 + r[1, 0] ** 2)
 
     if sy > 0.000001:
@@ -50,7 +51,6 @@ def build_sim_to_supersplat_transform():
     """Build transform from our z-up sim system to SuperSplat y-up system."""
 
     # SuperSplat uses y as up axis
-    # Our sim system uses z as up axis
     return np.array([
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
@@ -65,6 +65,7 @@ def transform_points(points, transform_matrix):
     if len(points) == 0:
         return np.empty((0, 3))
 
+    # homogeneous points
     homogeneous_points = np.ones((len(points), 4))
     homogeneous_points[:, :3] = points
 
@@ -81,6 +82,7 @@ def build_top_down_grid(points_sim, min_height, max_height, cell_size):
     if len(points_sim) == 0:
         return np.zeros((0, 0), dtype=np.uint8), np.array([0.0, 0.0]), height_range, 0
 
+    # height filter
     height_mask = (
         (points_sim[:, 2] >= min_height)
         & (points_sim[:, 2] <= max_height)
@@ -102,6 +104,7 @@ def build_top_down_grid(points_sim, min_height, max_height, cell_size):
 
     index_epsilon = 1e-9
 
+    # grid size
     cols = int(np.floor((x_max - x_min) / cell_size + index_epsilon)) + 1
     rows = int(np.floor((y_max - y_min) / cell_size + index_epsilon)) + 1
 
@@ -111,6 +114,7 @@ def build_top_down_grid(points_sim, min_height, max_height, cell_size):
     col_indices = np.clip(col_indices, 0, cols - 1)
     row_indices = np.clip(row_indices, 0, rows - 1)
 
+    # occupied cells
     occupancy_grid = np.zeros((rows, cols), dtype=np.uint8)
     occupancy_grid[row_indices, col_indices] = 1
 
@@ -207,6 +211,7 @@ def write_splat_data_yaml(
 def write_top_down_grid(file_path, occupancy_grid, cell_size, origin_xy, height_range, T_splat_to_sim, T_sim_to_splat):
     """Write the top-down grid and metadata as compessed npz"""
 
+    # save arrays
     np.savez_compressed(
         file_path,
         occupancy_grid=occupancy_grid,

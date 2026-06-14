@@ -52,6 +52,8 @@ step2_camera_poses = None
 step2_images_txt_path = None
 step3_odom_data_path = None
 
+
+
 # select ply file
 def show_file_dialog():
     root = Tk()
@@ -111,6 +113,8 @@ def draw_floor_preview(view_data, visible_points):
     width = 700
     height = 420
     border = 20
+    screen_center_x = width / 2
+    screen_center_y = height / 2
 
     dpg.draw_rectangle((0, 0), (width, height), color=(80, 80, 80, 255), parent="floor_candidate_preview")
 
@@ -120,6 +124,7 @@ def draw_floor_preview(view_data, visible_points):
         dpg.draw_text((20, 20), "Dieser Kandidat hat keine Inlier", parent="floor_candidate_preview")
         return
 
+    # bound of map (area covered by plane inliers) for scaling and centering
     x_min = plane_points[:, 0].min()
     x_max = plane_points[:, 0].max()
     y_min = plane_points[:, 1].min()
@@ -128,20 +133,25 @@ def draw_floor_preview(view_data, visible_points):
     center_x = (x_min + x_max) / 2
     center_y = (y_min + y_max) / 2
 
-    scale_x = (width - 2 * border) / (x_max - x_min + 0.000001)
-    scale_y = (height - 2 * border) / (y_max - y_min + 0.000001)
+    map_width = x_max - x_min + 0.000001
+    map_height = y_max - y_min + 0.000001
+
+    draw_width = width - 2 * border
+    draw_height = height - 2 * border
+
+    # scale
+    scale_x = draw_width / map_width
+    scale_y = draw_height / map_height
     scale = min(scale_x, scale_y)
 
-    def to_screen(point):
-        x = width / 2 + (point[0] - center_x) * scale
-        y = height / 2 - (point[1] - center_y) * scale
-        return x, y
+    floor_left = screen_center_x + (x_min - center_x) * scale
+    floor_right = screen_center_x + (x_max - center_x) * scale
+    floor_top = screen_center_y - (y_max - center_y) * scale
+    floor_bottom = screen_center_y - (y_min - center_y) * scale
 
-    top_left = to_screen([x_min, y_max])
-    bottom_right = to_screen([x_max, y_min])
     dpg.draw_rectangle(
-        top_left,
-        bottom_right,
+        (floor_left, floor_top),
+        (floor_right, floor_bottom),
         color=(0, 180, 80, 190),
         fill=(0, 180, 80, 35),
         parent="floor_candidate_preview"
@@ -150,10 +160,15 @@ def draw_floor_preview(view_data, visible_points):
     visible_points = floor_view.sample_points_for_drawing(visible_points, PREVIEW_MAX_POINTS)
 
     for point in visible_points:
-        x, y = to_screen(point)
+        point_x = point[0]
+        point_y = point[1]
+
+        screen_x = screen_center_x + (point_x - center_x) * scale
+        screen_y = screen_center_y - (point_y - center_y) * scale
+
         dpg.draw_rectangle(
-            (x, y),
-            (x + 1, y + 1),
+            (screen_x, screen_y),
+            (screen_x + 1, screen_y + 1),
             color=(0, 0, 0, 0),
             fill=(190, 190, 190, 90),
             parent="floor_candidate_preview"
@@ -376,6 +391,7 @@ def accept_floor_alignment():
 
     yaw_deg, origin_x, origin_y = get_alignment_slider_values()
 
+    # matrix for 1D
     T_floor_raw_to_sim = floor_alignment.build_floor_raw_to_sim_transform(
         yaw_deg,
         origin_x,
@@ -425,6 +441,7 @@ def calculate_final_transform():
         show_status("Erst Ausrichtung in 1C übernehmen\n")
         return
 
+    # final transform
     step1_final_transform_data = final_transform.build_final_transform(
         step1_validated_floor_data,
         step1_alignment_data,
@@ -449,6 +466,7 @@ def calculate_final_transform():
     T_sim_to_splat = step1_final_transform_data["T_sim_to_splat"]
 
     # get transform values for supersplat
+    # y-up systim
     T_sim_to_supersplat = final_transform.build_sim_to_supersplat_transform()
     T_splat_to_supersplat = T_sim_to_supersplat @ T_splat_to_sim
     supersplat_position = T_splat_to_supersplat[:3, 3]
@@ -459,6 +477,7 @@ def calculate_final_transform():
     max_height = height_filter["max_height"]
     cell_size = 0.05
 
+    # points for occupancy grid
     points_sim = final_transform.transform_points(step1_point_cloud, T_splat_to_sim)
     occupancy_grid, origin_xy, height_range, visible_point_count = final_transform.build_top_down_grid(
         points_sim,
@@ -740,6 +759,7 @@ def draw_trajectory_on_grid(grid_file_path, trajectory_file_path):
                 fig.canvas.draw_idle()
                 return
 
+            # add point
             points_xy.append(last_mouse_xy.copy())
             ax.set_title(title_text)
             redraw_line()
@@ -1228,6 +1248,7 @@ def run_visual_odometry():
     output_file = os.path.join(output_folder, "vo_output.csv")
     old_output_time = os.path.getmtime(output_file) if os.path.isfile(output_file) else None
 
+    # start VO script
     process = subprocess.Popen([
         sys.executable,
         script_file,
