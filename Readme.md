@@ -1,4 +1,8 @@
 # Pipeline zur Simulation und Evaluation visueller Lokalisierung in 3D-Gaussian-Splat-Umgebungen
+### Projektinfos
+**Modul:** Perzeptionssysteme für mobile Agenten  
+**Semester:** Sommersemester 2026  
+**Projektteam:** Paul Weigert, Marco Weber  
 
 ## Überblick
 
@@ -16,9 +20,8 @@ Nach einem Visual-Odometry-Lauf kann eine kurze Evaluation des ausgeführten Lau
 ### Einschränkungen
 
 Das Tool wurde mit Gaussian Splats unterschiedlicher Auflösungsstufen des Vorlesungsraums T1.1.08 der Hochschule Pforzheim validiert.
-Eine Gaussian-Splat-Datei niedriger Auflösung liegt mit im Hauptverzeichnis des Repositorys.
-Weitere Dateien unterschiedlicher Auflösungsstufen sind unter nachfolgendem Link mit einem Microslop-Office Konto der Hochschule herunterladbar: [GaussianSplatting_T1_1_08_3D_Cam](https://hspforzheimde-my.sharepoint.com/:u:/g/personal/maxim_dolgov_hs-pforzheim_de/IQD-km17JtNoToQ9DAwK7r1JAewIAJQ-nyqFfP4p7dXAHis?e=QqFlH3)  
-Die Nutzung mit anderen Gaussian-Splat-Umgebungen ist grundsätzlich möglich. Für gute Ergebnisse sollte die Szene eine ausreichend ebene Bodenfläche und einen sinnvoll abgegrenzten Raumbereich besitzen. Bei stark abweichenden Skalierungen können einzelne Parameteranpassungen im Code erforderlich sein.
+Die entsprechenden .PLY-Dateien sind unter nachfolgendem Link mit einem Microslop-Office Konto der Hochschule herunterladbar: [GaussianSplatting_T1_1_08_3D_Cam](https://hspforzheimde-my.sharepoint.com/:u:/g/personal/maxim_dolgov_hs-pforzheim_de/IQD-km17JtNoToQ9DAwK7r1JAewIAJQ-nyqFfP4p7dXAHis?e=QqFlH3)  
+Die Nutzung mit anderen Gaussian-Splat-Umgebungen ist grundsätzlich möglich. Für gute Ergebnisse sollte die Szene eine ausreichend ebene Bodenfläche und einen sinnvoll abgegrenzten Raumbereich besitzen. Bei stark abweichenden Skalierungen können jedoch einzelne Parameteranpassungen im Code erforderlich sein.
 
 
 ## Grundprinzip
@@ -66,10 +69,11 @@ Hinweis: Die [OK]-Markierung erkennt keine nachträglichen Inkonsistenzen. Werde
 
 
 ### Beispieldateien
-Neben der Gaussian-Splat-Datei (.ply) enthält das Repository bereits beispielhaft erzeugte Pipeline- und Evaluationsdaten.  
-Im Splat-Ordner `splats/point_cloud_2_traj2_lookahead5_smoothing25` befinden sich bereits die Daten eines vollständigen Pipeline-Durchlaufs. Nach Auswahl dieses Splat-Ordners in Schritt 2A oder 3A können die nachfolgenden Schritte direkt weiterverwendet werden, zum Beispiel zur Ausführung der Visual Odometry oder zur Anzeige der Evaluation.  
+Das Repository enthält bereits beispielhaft erzeugte Pipeline- und Evaluationsdaten.  
+Im Splat-Ordner `splats/point_cloud_2_traj2_lookahead5_smoothing25` befinden sich bereits die Daten eines vollständigen Pipeline-Durchlaufs. Nach Auswahl dieses Splat-Ordners in Schritt 2A oder 3A können über die vorhandenen Daten beliebige Pipeline-Schritte ausgeführt werden.  
+Hinweis: Vor der Ausführung der Visual Odometry in Schritt 3B müssen die Daten zunächst in Schritt 3A vorbereitet werden. Die Einzelbilder sind aufgrund ihres Speicherbedarfs nicht in der Abgabe enthalten und werden in Schritt 3A aus dem vorhandenen .mp4-Video extrahiert.
 
-Im Ordner `evaluation/` liegen zusätzlich beispielhafte Evaluationsdaten zweier Trajektorien sowie eine bereits gerenderte PDF-Evaluation. Beim erneuten Erstellen der PDF werden die dort vorhandenen Evaluationsdaten automatisch in den Vergleich einbezogen.
+Im Ordner `evaluation/` liegen zusätzlich beispielhafte Evaluationsdaten zweier Trajektorien sowie eine bereits gerenderte PDF-Evaluation. Beim erneuten Rendern der PDF werden die dort vorhandenen Evaluationsdaten automatisch in den Vergleich einbezogen.
 
 
 ## Setup und Starten
@@ -94,7 +98,9 @@ Die GUI der Pipeline wird aus dem Repository-Hauptverzeichnis gestartet über:
 ```powershell
 python start_pipeline.py
 ```  
-
+Die GUI führt schrittweise durch die einzelnen Pipeline-Schritte. In jedem Tab wird kurz beschrieben, welche Eingaben erforderlich sind und welche Daten erzeugt werden.  
+Sollte die GUI vereinzelt abstürzen oder nicht mehr reagieren, kann das Tool neu gestartet und nach Auswahl des passenden Splat-Ordners (in 2A oder 3A) im entsprechenden Schritt fortgesetzt werden.
+Bei Problemen oder Rückfragen sind wir über die oben genannten E-Mail-Adressen erreichbar.
 
  **Optional:**  
 Die ausführliche PDF-Evaluation aus Pipeline-Schritt 3D kann optional auch direkt erzeugt werden, sofern im zentralen Ordner `evaluation/` bereits gespeicherte Trajektorienordner liegen:
@@ -108,7 +114,7 @@ Für die PDF-Erzeugung muss eine LaTeX-Engine verfügbar sein. Im Conda-Environm
 
 
 ---
-## Detaillierter Ablauf  
+### Detaillierter Ablauf  
 
 Ein detaillierter Ablauf zu den Einzelschritten der Pipeline ist unter `doc/Projektübersicht.md` zu finden.
 

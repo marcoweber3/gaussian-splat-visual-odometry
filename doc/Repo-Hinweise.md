@@ -55,10 +55,10 @@ Für die PDF-Erzeugung muss eine LaTeX-Engine verfügbar sein. Im Conda-Environm
 ## Repo-Struktur
 
 
-- /src   -   Python-Code der Pipeline
+- /src   -   Python-Code und R-Code der Pipeline
 - /extern   -   Submodule: Monocular-Video-Odometery
 - /splats   -   Aus spezifischem Splat generierte Daten
-
+- /evaluation   -   Evaluationsdaten zum rendern einer Detailevaluation
 
 ## Hinweise:
 

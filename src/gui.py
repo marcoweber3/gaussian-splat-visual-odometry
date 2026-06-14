@@ -1058,7 +1058,7 @@ def export_supersplat_images_txt():
         + os.path.abspath(images_txt_path)
         + "\n\n"
         + "\tDadurch werden die Kameraposen als Frames in die Zeitleiste eingefügt.\n\tDie Zeitleiste ggf. ganz unten links durch Klick auf 'ZEITLEISTE' aufklappen.\n\n"
-        + "5. Gesamtzahl der Frames unten rechts erhöhen auf: "
+        + "5. Gesamtzahl der Frames unten rechts von 180 erhöhen auf: "
         + str(len(camera_poses))
         + "\n\n"
         + "\tEine Preview kann durch klick auf den Play-Button in der Zeitleiste gestartet werden.\n\n"
@@ -1699,7 +1699,7 @@ def run_detail_evaluation_pdf():
         if pdf_file.is_file() and (old_pdf_time is None or pdf_file.stat().st_mtime > old_pdf_time):
             set_step3d_status(
                 status_text
-                + "\nPDF-Evaluation wurde generiert."
+                + "\nPDF-Evaluation wurde im Ordner 'evaluation' generiert:"
                 + "\n"
                 + str(pdf_file)
                 + "\n\nHinweis: R hat trotzdem einen Fehlercode gemeldet. Wenn die PDF normal geöffnet werden kann, kann diese Meldung ignoriert werden."
@@ -1953,9 +1953,11 @@ def build_step2_area():
                 dpg.add_text("Output:", color=OUTPUT_COLOR)
                 dpg.add_text("\t- Kameraposen im COLMAP-Format: supersplat_camera_poses\\images.txt", color=OUTPUT_COLOR)
                 dpg.add_text("\t- Danach manuell über Rendering in SuperSplat: Videodatei im Ablage-Ordner 'supersplat_video'", color=OUTPUT_COLOR)
-                dpg.add_text("Generiere die images.txt Datei und folge den Anweisungen, um die Kameraposen in SuperSplat zu importieren und ein Video zu rendern.", color=INSTRUCTION_COLOR)
-
+                dpg.add_text("Generiere die images.txt Datei und folge den Anweisungen, um darüber die Kameraposen in SuperSplat zu importieren und ein Video zu rendern.", color=INSTRUCTION_COLOR)
+                
                 dpg.add_button(label="images.txt erzeugen", callback=export_supersplat_images_txt)
+                dpg.add_text("Hinweis: Die Transformation wird nicht direkt auf die Kameraposen angewendet, sondern wird manuell über die nachfolgend angezeigten Werte\n in SuperSplat eingestellt. Hintergrund ist, dass dadurch gleichzeitig das Koordinatensystem im SuperSplat Editor angepasst wird und\n validiert werden kann.")
+
                 dpg.add_separator()
                 dpg.add_input_text(tag="2c_output_text", default_value="", multiline=True, readonly=True, width=970, height=560)
 
@@ -2031,8 +2033,8 @@ def build_step3_area():
                         dpg.add_text("")
                         dpg.add_button(label="Evaluations-Ordner öffnen", callback=open_central_evaluation_folder)
 
-                dpg.add_button(label="Detail- / Vergleichsevaluation generieren und anzeigen", callback=show_detail_comparison_confirmation)
-
+                dpg.add_button(label="Detail- / Vergleichsevaluation generieren", callback=show_detail_comparison_confirmation)
+                dpg.add_text("Nach der Generierung ist die PDF im Evaluationsordner 'evaluation' verfügbar.")
                 dpg.add_text("")
                 dpg.add_separator()
                 dpg.add_text("")
