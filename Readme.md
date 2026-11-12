@@ -20,7 +20,7 @@ Nach einem Visual-Odometry-Lauf kann eine kurze Evaluation des ausgeführten Lau
 ### Einschränkungen
 
 Das Tool wurde mit Gaussian Splats unterschiedlicher Auflösungsstufen des Vorlesungsraums T1.1.08 der Hochschule Pforzheim validiert.
-Die entsprechenden .PLY-Dateien sind unter nachfolgendem Link mit einem Microslop-Office Konto der Hochschule herunterladbar: [GaussianSplatting_T1_1_08_3D_Cam](https://hspforzheimde-my.sharepoint.com/:u:/g/personal/maxim_dolgov_hs-pforzheim_de/IQD-km17JtNoToQ9DAwK7r1JAewIAJQ-nyqFfP4p7dXAHis?e=QqFlH3)  
+Die entsprechenden .PLY-Dateien sind unter nachfolgendem Link mit einem Microsoft-Office Konto der Hochschule herunterladbar: [GaussianSplatting_T1_1_08_3D_Cam](https://hspforzheimde-my.sharepoint.com/:u:/g/personal/maxim_dolgov_hs-pforzheim_de/IQD-km17JtNoToQ9DAwK7r1JAewIAJQ-nyqFfP4p7dXAHis?e=QqFlH3)  
 Die Nutzung mit anderen Gaussian-Splat-Umgebungen ist grundsätzlich möglich. Für gute Ergebnisse sollte die Szene eine ausreichend ebene Bodenfläche und einen sinnvoll abgegrenzten Raumbereich besitzen. Bei stark abweichenden Skalierungen können jedoch einzelne Parameteranpassungen im Code erforderlich sein.
 
 
@@ -100,7 +100,6 @@ python start_pipeline.py
 ```  
 Die GUI führt schrittweise durch die einzelnen Pipeline-Schritte. In jedem Tab wird kurz beschrieben, welche Eingaben erforderlich sind und welche Daten erzeugt werden.  
 Sollte die GUI vereinzelt abstürzen oder nicht mehr reagieren, kann das Tool neu gestartet und nach Auswahl des passenden Splat-Ordners (in 2A oder 3A) im entsprechenden Schritt fortgesetzt werden.
-Bei Problemen oder Rückfragen sind wir über die oben genannten E-Mail-Adressen erreichbar.
 
  **Optional:**  
 Die ausführliche PDF-Evaluation aus Pipeline-Schritt 3D kann optional auch direkt erzeugt werden, sofern im zentralen Ordner `evaluation/` bereits gespeicherte Trajektorienordner liegen:
