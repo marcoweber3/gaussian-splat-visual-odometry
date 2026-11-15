@@ -8,6 +8,15 @@
 
 Dieses Python-basierte GUI-Tool führt schrittweise durch eine Pipeline zur Erzeugung synthetischer Bildsequenzen und Referenzdaten aus einer 3D-Gaussian-Splat-Umgebung. Ziel ist es, prototypisch zu untersuchen, inwiefern sich solche simulierten Bilddaten für Visual Odometry eignen und welchen Einfluss Parameter wie Trajektorienverlauf, Kameraposen, Blickrichtung und Bildgenerierung auf die geschätzte Trajektorie haben.
 
+Beispiel einer Kurz-Evaluation
+
+<a href="./doc/short_eval.png">
+  <img src="./doc/short_eval.png" width="720" alt="Kurz-Evaluation mit Trajektorienvergleich und Diagnose pro Frame">
+</a>
+
+*Links der Vergleich von Referenztrajektorie und geschätzter Trajektorie. Rechts oben der Verlauf von Positionsfehler, Richtungsänderung und Anzahl der getrackten Bildmerkmale. Darunter stehen die Versuchsparameter, etwa Kamerahöhe und Glättung, sowie Evaluationskennzahlen wie der mittlere Positionsfehler und die Endabweichung.*
+
+\
 Aus einer Gaussian-Splat-Datei im `.ply`-Format werden zunächst eine Bodenebene und eine passende Ausrichtung des Raums bestimmt. Daraus werden eine Transformation sowie ein Occupancy Grid erzeugt, das als Grundlage für die weitere Simulation dient.
 
 Auf dem Occupancy Grid kann anschließend eine Fahrtrajektorie eingezeichnet werden. Entlang dieser Trajektorie werden Kameraposen aus Sicht eines Roboters berechnet und für den Import in den [SuperSplat Editor](https://superspl.at/editor) vorbereitet, um dort Bilddaten bzw. ein Video zu rendern.
